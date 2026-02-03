@@ -18,7 +18,20 @@ log_step() { echo -e "${BLUE}${ICON_STEP}${NC} $1"; }
 log_success() { echo -e "${GREEN}${ICON_SUCCESS}${NC} $1"; }
 log_warn() { echo -e "${YELLOW}${ICON_WARN}${NC} $1"; }
 log_error() { echo -e "${RED}${ICON_ERR}${NC} $1"; }
+<<<<<<< HEAD
 
+=======
+log_header() { echo -e "\n${BLUE}==== $1 ====${NC}\n"; }
+is_interactive() { [[ -t 1 && -r /dev/tty ]]; }
+prompt_enter() {
+    local prompt="$1"
+    if is_interactive; then
+        read -r -p "$prompt" < /dev/tty || true
+    else
+        echo "$prompt"
+    fi
+}
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 detect_mo() {
     if command -v mo > /dev/null 2>&1; then
         command -v mo
@@ -223,6 +236,7 @@ EOF
 create_raycast_commands() {
     local mo_bin="$1"
     local default_dir="$HOME/Library/Application Support/Raycast/script-commands"
+<<<<<<< HEAD
     local alt_dir="$HOME/Documents/Raycast/Scripts"
     local dirs=()
 
@@ -259,6 +273,46 @@ create_raycast_commands() {
     echo "  1. Open Raycast (⌘ Space)"
     echo "  2. Search for 'Reload Script Directories'"
     echo "  3. Press Enter to load new commands"
+=======
+    local dir="$default_dir"
+
+    log_step "Installing Raycast commands..."
+    mkdir -p "$dir"
+    write_raycast_script "$dir/mole-clean.sh" "clean" "$mo_bin" "clean"
+    write_raycast_script "$dir/mole-uninstall.sh" "uninstall" "$mo_bin" "uninstall"
+    write_raycast_script "$dir/mole-optimize.sh" "optimize" "$mo_bin" "optimize"
+    write_raycast_script "$dir/mole-analyze.sh" "analyze" "$mo_bin" "analyze"
+    write_raycast_script "$dir/mole-status.sh" "status" "$mo_bin" "status"
+    log_success "Scripts ready in: $dir"
+
+    log_header "Raycast Configuration"
+    if command -v open > /dev/null 2>&1; then
+        if open "raycast://extensions/raycast/raycast-settings/extensions" > /dev/null 2>&1; then
+            log_step "Raycast settings opened."
+        else
+            log_warn "Could not auto-open Raycast."
+        fi
+    else
+        log_warn "open command not available; please open Raycast manually."
+    fi
+
+    echo "If Raycast asks to add a Script Directory, use:"
+    echo "  $dir"
+
+    if is_interactive; then
+        log_header "Finalizing Setup"
+        prompt_enter "Press [Enter] to reload script directories in Raycast..."
+        if command -v open > /dev/null 2>&1 && open "raycast://extensions/raycast/raycast/reload-script-directories" > /dev/null 2>&1; then
+            log_step "Raycast script directories reloaded."
+        else
+            log_warn "Could not auto-reload Raycast script directories."
+        fi
+
+        log_success "Raycast setup complete!"
+    else
+        log_warn "Non-interactive mode; skip Raycast reload. Please run 'Reload Script Directories' in Raycast."
+    fi
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 }
 
 uuid() {
@@ -277,7 +331,10 @@ create_alfred_workflow() {
     local workflows_dir="$prefs_dir/workflows"
 
     if [[ ! -d "$workflows_dir" ]]; then
+<<<<<<< HEAD
         log_warn "Alfred preferences not found at $workflows_dir. Skipping Alfred workflow."
+=======
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
         return
     fi
 
@@ -292,7 +349,11 @@ create_alfred_workflow() {
 
     for entry in "${workflows[@]}"; do
         IFS="|" read -r bundle name keyword subtitle command <<< "$entry"
+<<<<<<< HEAD
         local workflow_uid="user.workflow.$(uuid | tr '[:upper:]' '[:lower:]')"
+=======
+        local workflow_uid="user.workflow.$(uuid | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
         local input_uid
         local action_uid
         input_uid="$(uuid)"
@@ -382,7 +443,11 @@ ${command}
 </dict>
 </plist>
 EOF
+<<<<<<< HEAD
         log_success "Workflow ready: ${name} (keyword: ${keyword})"
+=======
+        log_success "Workflow ready: ${name}, keyword: ${keyword}"
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
     done
 
     log_step "Open Alfred preferences → Workflows if you need to adjust keywords."
@@ -403,11 +468,19 @@ main() {
 
     echo ""
     log_success "Done! Raycast and Alfred are ready with 5 commands:"
+<<<<<<< HEAD
     echo "  • clean - Deep system cleanup"
     echo "  • uninstall - Remove applications"
     echo "  • optimize - System health & tuning"
     echo "  • analyze - Disk space explorer"
     echo "  • status - Live system monitor"
+=======
+    echo "  • clean, Deep system cleanup"
+    echo "  • uninstall, Remove applications"
+    echo "  • optimize, System health & tuning"
+    echo "  • analyze, Disk space explorer"
+    echo "  • status, Live system monitor"
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
     echo ""
 }
 

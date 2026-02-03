@@ -1,11 +1,19 @@
 package main
 
 import (
+<<<<<<< HEAD
+=======
+	"context"
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+<<<<<<< HEAD
+=======
+	"slices"
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	"sync"
 	"time"
 
@@ -26,13 +34,24 @@ var (
 func snapshotFromModel(m model) historyEntry {
 	return historyEntry{
 		Path:          m.path,
+<<<<<<< HEAD
 		Entries:       cloneDirEntries(m.entries),
 		LargeFiles:    cloneFileEntries(m.largeFiles),
 		TotalSize:     m.totalSize,
+=======
+		Entries:       slices.Clone(m.entries),
+		LargeFiles:    slices.Clone(m.largeFiles),
+		TotalSize:     m.totalSize,
+		TotalFiles:    m.totalFiles,
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 		Selected:      m.selected,
 		EntryOffset:   m.offset,
 		LargeSelected: m.largeSelected,
 		LargeOffset:   m.largeOffset,
+<<<<<<< HEAD
+=======
+		IsOverview:    m.isOverview,
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	}
 }
 
@@ -42,6 +61,7 @@ func cacheSnapshot(m model) historyEntry {
 	return entry
 }
 
+<<<<<<< HEAD
 func cloneDirEntries(entries []dirEntry) []dirEntry {
 	if len(entries) == 0 {
 		return nil
@@ -60,6 +80,8 @@ func cloneFileEntries(files []fileEntry) []fileEntry {
 	return copied
 }
 
+=======
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 func ensureOverviewSnapshotCacheLocked() error {
 	if overviewSnapshotLoaded {
 		return nil
@@ -206,7 +228,11 @@ func loadCacheFromDisk(path string) (*cacheEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+<<<<<<< HEAD
 	defer file.Close()
+=======
+	defer file.Close() //nolint:errcheck
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 
 	var entry cacheEntry
 	decoder := gob.NewDecoder(file)
@@ -220,7 +246,11 @@ func loadCacheFromDisk(path string) (*cacheEntry, error) {
 	}
 
 	if info.ModTime().After(entry.ModTime) {
+<<<<<<< HEAD
 		// Only expire cache if the directory has been newer for longer than the grace window.
+=======
+		// Allow grace window.
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 		if cacheModTimeGrace <= 0 || info.ModTime().Sub(entry.ModTime) > cacheModTimeGrace {
 			return nil, fmt.Errorf("cache expired: directory modified")
 		}
@@ -248,6 +278,10 @@ func saveCacheToDisk(path string, result scanResult) error {
 		Entries:    result.Entries,
 		LargeFiles: result.LargeFiles,
 		TotalSize:  result.TotalSize,
+<<<<<<< HEAD
+=======
+		TotalFiles: result.TotalFiles,
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 		ModTime:    info.ModTime(),
 		ScanTime:   time.Now(),
 	}
@@ -256,12 +290,42 @@ func saveCacheToDisk(path string, result scanResult) error {
 	if err != nil {
 		return err
 	}
+<<<<<<< HEAD
 	defer file.Close()
+=======
+	defer file.Close() //nolint:errcheck
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 
 	encoder := gob.NewEncoder(file)
 	return encoder.Encode(entry)
 }
 
+<<<<<<< HEAD
+=======
+// peekCacheTotalFiles attempts to read the total file count from cache,
+// ignoring expiration. Used for initial scan progress estimates.
+func peekCacheTotalFiles(path string) (int64, error) {
+	cachePath, err := getCachePath(path)
+	if err != nil {
+		return 0, err
+	}
+
+	file, err := os.Open(cachePath)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close() //nolint:errcheck
+
+	var entry cacheEntry
+	decoder := gob.NewDecoder(file)
+	if err := decoder.Decode(&entry); err != nil {
+		return 0, err
+	}
+
+	return entry.TotalFiles, nil
+}
+
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 func invalidateCache(path string) {
 	cachePath, err := getCachePath(path)
 	if err == nil {
@@ -288,6 +352,7 @@ func removeOverviewSnapshot(path string) {
 	}
 }
 
+<<<<<<< HEAD
 // prefetchOverviewCache scans overview directories in background
 // to populate cache for faster overview mode access
 func prefetchOverviewCache() {
@@ -297,19 +362,40 @@ func prefetchOverviewCache() {
 	var needScan []string
 	for _, entry := range entries {
 		// Skip if we have fresh cache
+=======
+// prefetchOverviewCache warms overview cache in background.
+func prefetchOverviewCache(ctx context.Context) {
+	entries := createOverviewEntries()
+
+	var needScan []string
+	for _, entry := range entries {
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 		if size, err := loadStoredOverviewSize(entry.Path); err == nil && size > 0 {
 			continue
 		}
 		needScan = append(needScan, entry.Path)
 	}
 
+<<<<<<< HEAD
 	// Nothing to scan
+=======
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	if len(needScan) == 0 {
 		return
 	}
 
+<<<<<<< HEAD
 	// Scan and cache in background
 	for _, path := range needScan {
+=======
+	for _, path := range needScan {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 		size, err := measureOverviewSize(path)
 		if err == nil && size > 0 {
 			_ = storeOverviewSize(path, size)

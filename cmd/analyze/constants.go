@@ -3,6 +3,7 @@ package main
 import "time"
 
 const (
+<<<<<<< HEAD
 	maxEntries            = 30
 	maxLargeFiles         = 30
 	barWidth              = 24
@@ -26,15 +27,49 @@ const (
 
 var foldDirs = map[string]bool{
 	// Version control
+=======
+	maxEntries             = 30
+	maxLargeFiles          = 20
+	barWidth               = 24
+	spotlightMinFileSize   = 100 << 20
+	largeFileWarmupMinSize = 1 << 20
+	defaultViewport        = 12
+	overviewCacheTTL       = 7 * 24 * time.Hour
+	overviewCacheFile      = "overview_sizes.json"
+	duTimeout              = 30 * time.Second
+	mdlsTimeout            = 5 * time.Second
+	maxConcurrentOverview  = 8
+	batchUpdateSize        = 100
+	cacheModTimeGrace      = 30 * time.Minute
+
+	// Worker pool limits.
+	minWorkers         = 16
+	maxWorkers         = 64
+	cpuMultiplier      = 4
+	maxDirWorkers      = 32
+	openCommandTimeout = 10 * time.Second
+)
+
+var foldDirs = map[string]bool{
+	// VCS.
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	".git": true,
 	".svn": true,
 	".hg":  true,
 
+<<<<<<< HEAD
 	// JavaScript/Node
 	"node_modules":                  true,
 	".npm":                          true,
 	"_npx":                          true, // ~/.npm/_npx global cache
 	"_cacache":                      true, // ~/.npm/_cacache
+=======
+	// JavaScript/Node.
+	"node_modules":                  true,
+	".npm":                          true,
+	"_npx":                          true,
+	"_cacache":                      true,
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	"_logs":                         true,
 	"_locks":                        true,
 	"_quick":                        true,
@@ -56,7 +91,11 @@ var foldDirs = map[string]bool{
 	".bun":                          true,
 	".deno":                         true,
 
+<<<<<<< HEAD
 	// Python
+=======
+	// Python.
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	"__pycache__":   true,
 	".pytest_cache": true,
 	".mypy_cache":   true,
@@ -73,7 +112,11 @@ var foldDirs = map[string]bool{
 	".pip":          true,
 	".pipx":         true,
 
+<<<<<<< HEAD
 	// Ruby/Go/PHP (vendor), Java/Kotlin/Scala/Rust (target)
+=======
+	// Ruby/Go/PHP (vendor), Java/Kotlin/Scala/Rust (target).
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	"vendor":        true,
 	".bundle":       true,
 	"gems":          true,
@@ -88,20 +131,32 @@ var foldDirs = map[string]bool{
 	".composer":     true,
 	".cargo":        true,
 
+<<<<<<< HEAD
 	// Build outputs
+=======
+	// Build outputs.
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	"build":     true,
 	"dist":      true,
 	".output":   true,
 	"coverage":  true,
 	".coverage": true,
 
+<<<<<<< HEAD
 	// IDE
+=======
+	// IDE.
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	".idea":   true,
 	".vscode": true,
 	".vs":     true,
 	".fleet":  true,
 
+<<<<<<< HEAD
 	// Cache directories
+=======
+	// Cache directories.
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	".cache":                  true,
 	"__MACOSX":                true,
 	".DS_Store":               true,
@@ -121,6 +176,7 @@ var foldDirs = map[string]bool{
 	".sdkman":                 true,
 	".nvm":                    true,
 
+<<<<<<< HEAD
 	// macOS specific
 	"Application Scripts":     true,
 	"Saved Application State": true,
@@ -133,24 +189,52 @@ var foldDirs = map[string]bool{
 	".containerd": true,
 
 	// Mobile development
+=======
+	// macOS.
+	"Application Scripts":     true,
+	"Saved Application State": true,
+
+	// iCloud.
+	"Mobile Documents": true,
+
+	// Containers.
+	".docker":     true,
+	".containerd": true,
+
+	// Mobile development.
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	"Pods":        true,
 	"DerivedData": true,
 	".build":      true,
 	"xcuserdata":  true,
 	"Carthage":    true,
+<<<<<<< HEAD
 
 	// Web frameworks
+=======
+	".dart_tool":  true,
+
+	// Web frameworks.
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	".angular":    true,
 	".svelte-kit": true,
 	".astro":      true,
 	".solid":      true,
 
+<<<<<<< HEAD
 	// Databases
+=======
+	// Databases.
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	".mysql":    true,
 	".postgres": true,
 	"mongodb":   true,
 
+<<<<<<< HEAD
 	// Other
+=======
+	// Other.
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	".terraform": true,
 	".vagrant":   true,
 	"tmp":        true,
@@ -169,11 +253,28 @@ var skipSystemDirs = map[string]bool{
 	"bin":                     true,
 	"etc":                     true,
 	"var":                     true,
+<<<<<<< HEAD
+=======
+	"opt":                     false,
+	"usr":                     false,
+	"Volumes":                 true,
+	"Network":                 true,
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	".vol":                    true,
 	".Spotlight-V100":         true,
 	".fseventsd":              true,
 	".DocumentRevisions-V100": true,
 	".TemporaryItems":         true,
+<<<<<<< HEAD
+=======
+	".MobileBackups":          true,
+}
+
+var defaultSkipDirs = map[string]bool{
+	"nfs":         true,
+	"PHD":         true,
+	"Permissions": true,
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 }
 
 var skipExtensions = map[string]bool{
@@ -223,6 +324,7 @@ var skipExtensions = map[string]bool{
 var spinnerFrames = []string{"|", "/", "-", "\\", "|", "/", "-", "\\"}
 
 const (
+<<<<<<< HEAD
 	colorPurple = "\033[0;35m"
 	colorGray   = "\033[0;90m"
 	colorRed    = "\033[0;31m"
@@ -231,4 +333,16 @@ const (
 	colorCyan   = "\033[0;36m"
 	colorReset  = "\033[0m"
 	colorBold   = "\033[1m"
+=======
+	colorPurple     = "\033[0;35m"
+	colorPurpleBold = "\033[1;35m"
+	colorGray       = "\033[0;90m"
+	colorRed        = "\033[0;31m"
+	colorYellow     = "\033[0;33m"
+	colorGreen      = "\033[0;32m"
+	colorBlue       = "\033[0;34m"
+	colorCyan       = "\033[0;36m"
+	colorReset      = "\033[0m"
+	colorBold       = "\033[1m"
+>>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 )
