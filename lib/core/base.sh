@@ -35,16 +35,40 @@ readonly ICON_WARNING="◎"
 readonly ICON_EMPTY="○"
 readonly ICON_SOLID="●"
 readonly ICON_LIST="•"
+readonly ICON_SUBLIST="↳"
 readonly ICON_ARROW="➤"
 readonly ICON_DRY_RUN="→"
+readonly ICON_REVIEW="☞"
 readonly ICON_NAV_UP="↑"
 readonly ICON_NAV_DOWN="↓"
+readonly ICON_INFO="ℹ"
+
+# ============================================================================
+# LaunchServices Utility
+# ============================================================================
+
+# Locate the lsregister binary (path varies across macOS versions).
+get_lsregister_path() {
+    local -a candidates=(
+        "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+        "/System/Library/CoreServices/Frameworks/LaunchServices.framework/Support/lsregister"
+    )
+    local candidate=""
+    for candidate in "${candidates[@]}"; do
+        if [[ -x "$candidate" ]]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    echo ""
+    return 0
+}
 
 # ============================================================================
 # Global Configuration Constants
 # ============================================================================
 readonly MOLE_TEMP_FILE_AGE_DAYS=7       # Temp file retention (days)
-readonly MOLE_ORPHAN_AGE_DAYS=60         # Orphaned data retention (days)
+readonly MOLE_ORPHAN_AGE_DAYS=30         # Orphaned data retention (days)
 readonly MOLE_MAX_PARALLEL_JOBS=15       # Parallel job limit
 readonly MOLE_MAIL_DOWNLOADS_MIN_KB=5120 # Mail attachment size threshold
 readonly MOLE_MAIL_AGE_DAYS=30           # Mail attachment retention (days)
@@ -54,6 +78,8 @@ readonly MOLE_SAVED_STATE_AGE_DAYS=30    # Saved state retention (days) - increa
 readonly MOLE_TM_BACKUP_SAFE_HOURS=48    # TM backup safety window (hours)
 readonly MOLE_MAX_DS_STORE_FILES=500     # Max .DS_Store files to clean per scan
 readonly MOLE_MAX_ORPHAN_ITERATIONS=100  # Max iterations for orphaned app data scan
+readonly MOLE_ONE_GIB_KB=$((1024 * 1024))
+readonly MOLE_ONE_GB_BYTES=1000000000
 
 # ============================================================================
 # Whitelist Configuration
@@ -63,6 +89,8 @@ declare -a DEFAULT_WHITELIST_PATTERNS=(
     "$HOME/Library/Caches/ms-playwright*"
     "$HOME/.cache/huggingface*"
     "$HOME/.m2/repository/*"
+    "$HOME/.gradle/caches/*"
+    "$HOME/.gradle/daemon/*"
     "$HOME/.ollama/models/*"
     "$HOME/Library/Caches/com.nssurge.surge-mac/*"
     "$HOME/Library/Application Support/com.nssurge.surge-mac/*"
@@ -70,6 +98,7 @@ declare -a DEFAULT_WHITELIST_PATTERNS=(
     "$HOME/Library/Caches/pypoetry/virtualenvs*"
     "$HOME/Library/Caches/JetBrains*"
     "$HOME/Library/Caches/com.jetbrains.toolbox*"
+    "$HOME/Library/Caches/tealdeer/tldr-pages"
     "$HOME/Library/Application Support/JetBrains*"
     "$HOME/Library/Caches/com.apple.finder"
     "$HOME/Library/Mobile Documents*"
@@ -162,19 +191,20 @@ is_sip_enabled() {
     fi
 }
 
-# Check if running in an interactive terminal
-is_interactive() {
-    [[ -t 1 ]]
-}
-
 # Detect CPU architecture
 # Returns: "Apple Silicon" or "Intel"
 detect_architecture() {
-    if [[ "$(uname -m)" == "arm64" ]]; then
-        echo "Apple Silicon"
-    else
-        echo "Intel"
+    if [[ -n "${MOLE_ARCH_CACHE:-}" ]]; then
+        echo "$MOLE_ARCH_CACHE"
+        return 0
     fi
+
+    if [[ "$(uname -m)" == "arm64" ]]; then
+        export MOLE_ARCH_CACHE="Apple Silicon"
+    else
+        export MOLE_ARCH_CACHE="Intel"
+    fi
+    echo "$MOLE_ARCH_CACHE"
 }
 
 # Get free disk space on root volume
@@ -191,6 +221,11 @@ get_free_space() {
 # Get Darwin kernel major version (e.g., 24 for 24.2.0)
 # Returns 999 on failure to adopt conservative behavior (assume modern system)
 get_darwin_major() {
+    if [[ -n "${MOLE_DARWIN_MAJOR_CACHE:-}" ]]; then
+        echo "$MOLE_DARWIN_MAJOR_CACHE"
+        return 0
+    fi
+
     local kernel
     kernel=$(uname -r 2> /dev/null || true)
     local major="${kernel%%.*}"
@@ -198,6 +233,7 @@ get_darwin_major() {
         # Return high number to skip potentially dangerous operations on unknown systems
         major=999
     fi
+    export MOLE_DARWIN_MAJOR_CACHE="$major"
     echo "$major"
 }
 
@@ -212,8 +248,10 @@ is_darwin_ge() {
 # Get optimal parallel jobs for operation type (scan|io|compute|default)
 get_optimal_parallel_jobs() {
     local operation_type="${1:-default}"
-    local cpu_cores
-    cpu_cores=$(sysctl -n hw.ncpu 2> /dev/null || echo 4)
+    if [[ -z "${MOLE_CPU_CORES_CACHE:-}" ]]; then
+        export MOLE_CPU_CORES_CACHE=$(sysctl -n hw.ncpu 2> /dev/null || echo 4)
+    fi
+    local cpu_cores="$MOLE_CPU_CORES_CACHE"
     case "$operation_type" in
         scan | io)
             echo $((cpu_cores * 2))
@@ -233,30 +271,6 @@ get_optimal_parallel_jobs() {
 
 is_root_user() {
     [[ "$(id -u)" == "0" ]]
-}
-
-get_user_home() {
-    local user="$1"
-    local home=""
-
-    if [[ -z "$user" ]]; then
-        echo ""
-        return 0
-    fi
-
-    if command -v dscl > /dev/null 2>&1; then
-        home=$(dscl . -read "/Users/$user" NFSHomeDirectory 2> /dev/null | awk '{print $2}' | head -1 || true)
-    fi
-
-    if [[ -z "$home" ]]; then
-        home=$(eval echo "~$user" 2> /dev/null || true)
-    fi
-
-    if [[ "$home" == "~"* ]]; then
-        home=""
-    fi
-
-    echo "$home"
 }
 
 get_invoking_user() {
@@ -305,6 +319,30 @@ get_invoking_home() {
     fi
 
     echo "${HOME:-}"
+}
+
+get_user_home() {
+    local user="$1"
+    local home=""
+
+    if [[ -z "$user" ]]; then
+        echo ""
+        return 0
+    fi
+
+    if command -v dscl > /dev/null 2>&1; then
+        home=$(dscl . -read "/Users/$user" NFSHomeDirectory 2> /dev/null | awk '{print $2}' | head -1 || true)
+    fi
+
+    if [[ -z "$home" ]]; then
+        home=$(id -P "$user" 2> /dev/null | cut -d: -f9 || true)
+    fi
+
+    if [[ "$home" == "~"* ]]; then
+        home=""
+    fi
+
+    echo "$home"
 }
 
 ensure_user_dir() {
@@ -424,35 +462,6 @@ ensure_user_file() {
 # Formatting Utilities
 # ============================================================================
 
-# Convert bytes to human-readable format (e.g., 1.5GB)
-bytes_to_human() {
-    local bytes="$1"
-    [[ "$bytes" =~ ^[0-9]+$ ]] || {
-        echo "0B"
-        return 1
-    }
-
-    # GB: >= 1073741824 bytes
-    if ((bytes >= 1073741824)); then
-        printf "%d.%02dGB\n" $((bytes / 1073741824)) $(((bytes % 1073741824) * 100 / 1073741824))
-    # MB: >= 1048576 bytes
-    elif ((bytes >= 1048576)); then
-        printf "%d.%01dMB\n" $((bytes / 1048576)) $(((bytes % 1048576) * 10 / 1048576))
-    # KB: >= 1024 bytes (round up)
-    elif ((bytes >= 1024)); then
-        printf "%dKB\n" $(((bytes + 512) / 1024))
-    else
-        printf "%dB\n" "$bytes"
-    fi
-}
-
-# Convert kilobytes to human-readable format
-# Args: $1 - size in KB
-# Returns: formatted string
-bytes_to_human_kb() {
-    bytes_to_human "$((${1:-0} * 1024))"
-}
-
 # Get brand-friendly localized name for an application
 get_brand_name() {
     local name="$1"
@@ -509,6 +518,43 @@ get_brand_name() {
     fi
 }
 
+# Convert bytes to human-readable format (e.g., 1.5GB)
+# macOS (since Snow Leopard) uses Base-10 calculation (1 KB = 1000 bytes)
+bytes_to_human() {
+    local bytes="$1"
+    [[ "$bytes" =~ ^[0-9]+$ ]] || {
+        echo "0B"
+        return 1
+    }
+
+    # GB: >= 1,000,000,000 bytes
+    if ((bytes >= 1000000000)); then
+        local scaled=$(((bytes * 100 + 500000000) / 1000000000))
+        printf "%d.%02dGB\n" $((scaled / 100)) $((scaled % 100))
+    # MB: >= 1,000,000 bytes
+    elif ((bytes >= 1000000)); then
+        local scaled=$(((bytes * 10 + 500000) / 1000000))
+        printf "%d.%01dMB\n" $((scaled / 10)) $((scaled % 10))
+    # KB: >= 1,000 bytes (round up to nearest KB instead of decimal)
+    elif ((bytes >= 1000)); then
+        printf "%dKB\n" $(((bytes + 500) / 1000))
+    else
+        printf "%dB\n" "$bytes"
+    fi
+}
+
+# Convert kilobytes to human-readable format
+# Args: $1 - size in KB
+# Returns: formatted string
+bytes_to_human_kb() {
+    bytes_to_human "$((${1:-0} * 1024))"
+}
+
+# Pick a cleanup result color using the displayed decimal 1 GB threshold.
+cleanup_result_color_kb() {
+    printf '%s' "$GREEN"
+}
+
 # ============================================================================
 # Temporary File Management
 # ============================================================================
@@ -517,10 +563,93 @@ get_brand_name() {
 declare -a MOLE_TEMP_FILES=()
 declare -a MOLE_TEMP_DIRS=()
 
+normalize_temp_root() {
+    local path="${1:-}"
+    [[ -z "$path" ]] && return 1
+
+    if [[ "$path" == "~"* ]]; then
+        path="${path/#\~/$HOME}"
+    fi
+
+    while [[ "$path" != "/" && "$path" == */ ]]; do
+        path="${path%/}"
+    done
+
+    [[ -n "$path" ]] || return 1
+    printf '%s\n' "$path"
+}
+
+probe_temp_root() {
+    local raw_path="$1"
+    local allow_create="${2:-false}"
+    local path
+    local probe=""
+
+    path=$(normalize_temp_root "$raw_path") || return 1
+
+    if [[ "$allow_create" == "true" ]]; then
+        ensure_user_dir "$path"
+    fi
+
+    [[ -d "$path" ]] || return 1
+
+    probe=$(mktemp "$path/mole.probe.XXXXXX" 2> /dev/null) || return 1
+    rm -f "$probe" 2> /dev/null || true
+
+    printf '%s\n' "$path"
+}
+
+ensure_mole_temp_root() {
+    if [[ -n "${MOLE_RESOLVED_TMPDIR:-}" ]]; then
+        return 0
+    fi
+
+    local resolved=""
+    local candidate="${TMPDIR:-}"
+    local invoking_home=""
+
+    if [[ -n "$candidate" ]]; then
+        resolved=$(probe_temp_root "$candidate" false || true)
+    fi
+
+    if [[ -z "$resolved" ]]; then
+        invoking_home=$(get_invoking_home)
+        if [[ -n "$invoking_home" ]]; then
+            resolved=$(probe_temp_root "$invoking_home/.cache/mole/tmp" true || true)
+        fi
+    fi
+
+    if [[ -z "$resolved" ]]; then
+        resolved=$(probe_temp_root "/tmp" false || true)
+    fi
+
+    [[ -n "$resolved" ]] || resolved="/tmp"
+    MOLE_RESOLVED_TMPDIR="$resolved"
+    export MOLE_RESOLVED_TMPDIR
+}
+
+get_mole_temp_root() {
+    ensure_mole_temp_root
+    printf '%s\n' "$MOLE_RESOLVED_TMPDIR"
+}
+
+prepare_mole_tmpdir() {
+    ensure_mole_temp_root
+    export TMPDIR="$MOLE_RESOLVED_TMPDIR"
+    printf '%s\n' "$MOLE_RESOLVED_TMPDIR"
+}
+
+mole_temp_path_template() {
+    local prefix="${1:-mole}"
+    ensure_mole_temp_root
+    printf '%s/%s.XXXXXX\n' "$MOLE_RESOLVED_TMPDIR" "$prefix"
+}
+
 # Create tracked temporary file
 create_temp_file() {
     local temp
-    temp=$(mktemp) || return 1
+    ensure_mole_temp_root
+    temp=$(mktemp "$MOLE_RESOLVED_TMPDIR/mole.XXXXXX") || return 1
     register_temp_file "$temp"
     echo "$temp"
 }
@@ -528,7 +657,8 @@ create_temp_file() {
 # Create tracked temporary directory
 create_temp_dir() {
     local temp
-    temp=$(mktemp -d) || return 1
+    ensure_mole_temp_root
+    temp=$(mktemp -d "$MOLE_RESOLVED_TMPDIR/mole.XXXXXX") || return 1
     register_temp_dir "$temp"
     echo "$temp"
 }
@@ -549,9 +679,8 @@ mktemp_file() {
     local prefix="${1:-mole}"
     local temp
     local error_msg
-    # Use TMPDIR if set, otherwise /tmp
     # Add .XXXXXX suffix to work with both BSD and GNU mktemp
-    if ! error_msg=$(mktemp "${TMPDIR:-/tmp}/${prefix}.XXXXXX" 2>&1); then
+    if ! error_msg=$(mktemp "$(mole_temp_path_template "$prefix")" 2>&1); then
         echo "Error: Failed to create temporary file: $error_msg" >&2
         return 1
     fi
@@ -562,7 +691,9 @@ mktemp_file() {
 
 # Cleanup all tracked temp files and directories
 cleanup_temp_files() {
-    stop_inline_spinner 2> /dev/null || true
+    if declare -F stop_inline_spinner > /dev/null 2>&1; then
+        stop_inline_spinner || true
+    fi
     local file
     if [[ ${#MOLE_TEMP_FILES[@]} -gt 0 ]]; then
         for file in "${MOLE_TEMP_FILES[@]}"; do
@@ -617,7 +748,7 @@ note_activity() {
 # Usage: start_section_spinner "message"
 start_section_spinner() {
     local message="${1:-Scanning...}"
-    stop_inline_spinner 2> /dev/null || true
+    stop_inline_spinner || true
     if [[ -t 1 ]]; then
         MOLE_SPINNER_PREFIX="  " start_inline_spinner "$message"
     fi
@@ -627,7 +758,7 @@ start_section_spinner() {
 # Usage: stop_section_spinner
 stop_section_spinner() {
     # Always try to stop spinner (function handles empty PID gracefully)
-    stop_inline_spinner 2> /dev/null || true
+    stop_inline_spinner || true
     # Always clear line to handle edge cases where spinner output remains
     # (e.g., spinner was stopped elsewhere but line not cleared)
     if [[ -t 1 ]]; then
@@ -701,91 +832,6 @@ update_progress_if_needed() {
 }
 
 # ============================================================================
-# Spinner Stack Management (prevents nesting issues)
-# ============================================================================
-
-# Global spinner stack
-declare -a MOLE_SPINNER_STACK=()
-
-# Push current spinner state onto stack
-# Usage: push_spinner_state
-push_spinner_state() {
-    local current_state=""
-
-    # Save current spinner PID if running
-    if [[ -n "${MOLE_SPINNER_PID:-}" ]] && kill -0 "$MOLE_SPINNER_PID" 2> /dev/null; then
-        current_state="running:$MOLE_SPINNER_PID"
-    else
-        current_state="stopped"
-    fi
-
-    MOLE_SPINNER_STACK+=("$current_state")
-    debug_log "Pushed spinner state: $current_state, stack depth: ${#MOLE_SPINNER_STACK[@]}"
-}
-
-# Pop and restore spinner state from stack
-# Usage: pop_spinner_state
-pop_spinner_state() {
-    if [[ ${#MOLE_SPINNER_STACK[@]} -eq 0 ]]; then
-        debug_log "Warning: Attempted to pop from empty spinner stack"
-        return 1
-    fi
-
-    # Stack depth safety check
-    if [[ ${#MOLE_SPINNER_STACK[@]} -gt 10 ]]; then
-        debug_log "Warning: Spinner stack depth excessive, ${#MOLE_SPINNER_STACK[@]}, possible leak"
-    fi
-
-    local last_idx=$((${#MOLE_SPINNER_STACK[@]} - 1))
-    local state="${MOLE_SPINNER_STACK[$last_idx]}"
-
-    # Remove from stack (Bash 3.2 compatible way)
-    # Instead of unset, rebuild array without last element
-    local -a new_stack=()
-    local i
-    for ((i = 0; i < last_idx; i++)); do
-        new_stack+=("${MOLE_SPINNER_STACK[$i]}")
-    done
-    MOLE_SPINNER_STACK=("${new_stack[@]}")
-
-    debug_log "Popped spinner state: $state, remaining depth: ${#MOLE_SPINNER_STACK[@]}"
-
-    # Restore state if needed
-    if [[ "$state" == running:* ]]; then
-        # Previous spinner was running - we don't restart it automatically
-        # This is intentional to avoid UI conflicts
-        :
-    fi
-
-    return 0
-}
-
-# Safe spinner start with stack management
-# Usage: safe_start_spinner <message>
-safe_start_spinner() {
-    local message="${1:-Working...}"
-
-    # Push current state
-    push_spinner_state
-
-    # Stop any existing spinner
-    stop_section_spinner 2> /dev/null || true
-
-    # Start new spinner
-    start_section_spinner "$message"
-}
-
-# Safe spinner stop with stack management
-# Usage: safe_stop_spinner
-safe_stop_spinner() {
-    # Stop current spinner
-    stop_section_spinner 2> /dev/null || true
-
-    # Pop previous state
-    pop_spinner_state || true
-}
-
-# ============================================================================
 # Terminal Compatibility Checks
 # ============================================================================
 
@@ -793,18 +839,30 @@ safe_stop_spinner() {
 # Usage: is_ansi_supported
 # Returns: 0 if supported, 1 if not
 is_ansi_supported() {
+    if [[ -n "${MOLE_ANSI_SUPPORTED_CACHE:-}" ]]; then
+        return "$MOLE_ANSI_SUPPORTED_CACHE"
+    fi
+
     # Check if running in interactive terminal
-    [[ -t 1 ]] || return 1
+    if ! [[ -t 1 ]]; then
+        export MOLE_ANSI_SUPPORTED_CACHE=1
+        return 1
+    fi
 
     # Check TERM variable
-    [[ -n "${TERM:-}" ]] || return 1
+    if [[ -z "${TERM:-}" ]]; then
+        export MOLE_ANSI_SUPPORTED_CACHE=1
+        return 1
+    fi
 
     # Check for known ANSI-compatible terminals
     case "$TERM" in
         xterm* | vt100 | vt220 | screen* | tmux* | ansi | linux | rxvt* | konsole*)
+            export MOLE_ANSI_SUPPORTED_CACHE=0
             return 0
             ;;
         dumb | unknown)
+            export MOLE_ANSI_SUPPORTED_CACHE=1
             return 1
             ;;
         *)
@@ -812,73 +870,13 @@ is_ansi_supported() {
             if command -v tput > /dev/null 2>&1; then
                 # Test if terminal supports colors (good proxy for ANSI support)
                 local colors=$(tput colors 2> /dev/null || echo "0")
-                [[ "$colors" -ge 8 ]] && return 0
+                if [[ "$colors" -ge 8 ]]; then
+                    export MOLE_ANSI_SUPPORTED_CACHE=0
+                    return 0
+                fi
             fi
+            export MOLE_ANSI_SUPPORTED_CACHE=1
             return 1
             ;;
     esac
-}
-
-# Get terminal capability info
-# Usage: get_terminal_info
-get_terminal_info() {
-    local info="Terminal: ${TERM:-unknown}"
-
-    if is_ansi_supported; then
-        info+=", ANSI supported"
-
-        if command -v tput > /dev/null 2>&1; then
-            local cols=$(tput cols 2> /dev/null || echo "?")
-            local lines=$(tput lines 2> /dev/null || echo "?")
-            local colors=$(tput colors 2> /dev/null || echo "?")
-            info+=" ${cols}x${lines}, ${colors} colors"
-        fi
-    else
-        info+=", ANSI not supported"
-    fi
-
-    echo "$info"
-}
-
-# Validate terminal environment before running
-# Usage: validate_terminal_environment
-# Returns: 0 if OK, 1 with warning if issues detected
-validate_terminal_environment() {
-    local warnings=0
-
-    # Check if TERM is set
-    if [[ -z "${TERM:-}" ]]; then
-        log_warning "TERM environment variable not set"
-        ((warnings++))
-    fi
-
-    # Check if running in a known problematic terminal
-    case "${TERM:-}" in
-        dumb)
-            log_warning "Running in 'dumb' terminal, limited functionality"
-            ((warnings++))
-            ;;
-        unknown)
-            log_warning "Terminal type unknown, may have display issues"
-            ((warnings++))
-            ;;
-    esac
-
-    # Check terminal size if available
-    if command -v tput > /dev/null 2>&1; then
-        local cols=$(tput cols 2> /dev/null || echo "80")
-        if [[ "$cols" -lt 60 ]]; then
-            log_warning "Terminal width, $cols cols, is narrow, output may wrap"
-            ((warnings++))
-        fi
-    fi
-
-    # Report compatibility
-    if [[ $warnings -eq 0 ]]; then
-        debug_log "Terminal environment validated: $(get_terminal_info)"
-        return 0
-    else
-        debug_log "Terminal compatibility warnings: $warnings"
-        return 1
-    fi
 }

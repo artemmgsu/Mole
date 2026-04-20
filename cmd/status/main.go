@@ -1,17 +1,13 @@
-<<<<<<< HEAD
-=======
 // Package main provides the mo status command for real-time system monitoring.
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 package main
 
 import (
+	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
-<<<<<<< HEAD
-=======
 	"path/filepath"
 	"strings"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,7 +19,27 @@ const refreshInterval = time.Second
 var (
 	Version   = "dev"
 	BuildTime = ""
+
+	// Command-line flags
+	jsonOutput       = flag.Bool("json", false, "output metrics as JSON instead of TUI")
+	procCPUThreshold = flag.Float64("proc-cpu-threshold", 100, "alert when a process stays above this CPU percent")
+	procCPUWindow    = flag.Duration("proc-cpu-window", 5*time.Minute, "continuous duration a process must exceed the CPU threshold")
+	procCPUAlerts    = flag.Bool("proc-cpu-alerts", true, "enable persistent high-CPU process alerts")
 )
+
+func shouldUseJSONOutput(forceJSON bool, stdout *os.File) bool {
+	if forceJSON {
+		return true
+	}
+	if stdout == nil {
+		return false
+	}
+	info, err := stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return (info.Mode() & os.ModeCharDevice) == 0
+}
 
 type tickMsg struct{}
 type animTickMsg struct{}
@@ -43,9 +59,22 @@ type model struct {
 	lastUpdated time.Time
 	collecting  bool
 	animFrame   int
-<<<<<<< HEAD
-=======
 	catHidden   bool // true = hidden, false = visible
+}
+
+// padViewToHeight ensures the rendered frame always overwrites the full
+// terminal region by padding with empty lines up to the current height.
+func padViewToHeight(view string, height int) string {
+	if height <= 0 {
+		return view
+	}
+
+	contentHeight := lipgloss.Height(view)
+	if contentHeight >= height {
+		return view
+	}
+
+	return view + strings.Repeat("\n", height-contentHeight)
 }
 
 // getConfigPath returns the path to the status preferences file.
@@ -86,17 +115,31 @@ func saveCatHidden(hidden bool) {
 		value = "cat_hidden=true"
 	}
 	_ = os.WriteFile(path, []byte(value+"\n"), 0644)
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 }
 
 func newModel() model {
 	return model{
-		collector: NewCollector(),
-<<<<<<< HEAD
-=======
+		collector: NewCollector(processWatchOptionsFromFlags()),
 		catHidden: loadCatHidden(),
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	}
+}
+
+func processWatchOptionsFromFlags() ProcessWatchOptions {
+	return ProcessWatchOptions{
+		Enabled:      *procCPUAlerts,
+		CPUThreshold: *procCPUThreshold,
+		Window:       *procCPUWindow,
+	}
+}
+
+func validateFlags() error {
+	if *procCPUThreshold < 0 {
+		return fmt.Errorf("--proc-cpu-threshold must be >= 0")
+	}
+	if *procCPUWindow <= 0 {
+		return fmt.Errorf("--proc-cpu-window must be > 0")
+	}
+	return nil
 }
 
 func (m model) Init() tea.Cmd {
@@ -109,14 +152,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
-<<<<<<< HEAD
-=======
 		case "k":
 			// Toggle cat visibility and persist preference
 			m.catHidden = !m.catHidden
 			saveCatHidden(m.catHidden)
 			return m, nil
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -137,11 +177,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.metrics = msg.data
 		m.lastUpdated = msg.data.CollectedAt
 		m.collecting = false
-<<<<<<< HEAD
-		// Mark ready after first successful data collection
-=======
 		// Mark ready after first successful data collection.
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 		if !m.ready {
 			m.ready = true
 		}
@@ -158,49 +194,47 @@ func (m model) View() string {
 		return "Loading..."
 	}
 
-<<<<<<< HEAD
-	header := renderHeader(m.metrics, m.errMessage, m.animFrame, m.width)
-=======
-	header := renderHeader(m.metrics, m.errMessage, m.animFrame, m.width, m.catHidden)
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
-	cardWidth := 0
-	if m.width > 80 {
-		cardWidth = maxInt(24, m.width/2-4)
+	termWidth := m.width
+	if termWidth <= 0 {
+		termWidth = 80
 	}
-	cards := buildCards(m.metrics, cardWidth)
 
-	if m.width <= 80 {
-		var rendered []string
-<<<<<<< HEAD
-		for _, c := range cards {
-			rendered = append(rendered, renderCard(c, cardWidth, 0))
+	header, mole := renderHeader(m.metrics, m.errMessage, m.animFrame, termWidth, m.catHidden)
+	alertBar := renderProcessAlertBar(m.metrics.ProcessAlerts, termWidth)
+
+	var cardContent string
+	if termWidth <= 80 {
+		cardWidth := termWidth
+		if cardWidth > 2 {
+			cardWidth -= 2
 		}
-		return header + "\n" + lipgloss.JoinVertical(lipgloss.Left, rendered...)
-	}
+		cards := buildCards(m.metrics, cardWidth)
 
-	return header + "\n" + renderTwoColumns(cards, m.width)
-=======
+		var rendered []string
 		for i, c := range cards {
 			if i > 0 {
 				rendered = append(rendered, "")
 			}
 			rendered = append(rendered, renderCard(c, cardWidth, 0))
 		}
-		result := header + "\n" + lipgloss.JoinVertical(lipgloss.Left, rendered...)
-		// Add extra newline if cat is hidden for better spacing
-		if m.catHidden {
-			result = header + "\n\n" + lipgloss.JoinVertical(lipgloss.Left, rendered...)
-		}
-		return result
+		cardContent = lipgloss.JoinVertical(lipgloss.Left, rendered...)
+	} else {
+		cardWidth := max(24, termWidth/2-4)
+		cards := buildCards(m.metrics, cardWidth)
+		cardContent = renderTwoColumns(cards, termWidth)
 	}
 
-	twoCol := renderTwoColumns(cards, m.width)
-	// Add extra newline if cat is hidden for better spacing
-	if m.catHidden {
-		return header + "\n\n" + twoCol
+	// Combine header, mole, and cards with consistent spacing
+	parts := []string{header}
+	if alertBar != "" {
+		parts = append(parts, alertBar)
 	}
-	return header + "\n" + twoCol
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
+	if mole != "" {
+		parts = append(parts, mole)
+	}
+	parts = append(parts, cardContent)
+	output := lipgloss.JoinVertical(lipgloss.Left, parts...)
+	return padViewToHeight(output, m.height)
 }
 
 func (m model) collectCmd() tea.Cmd {
@@ -219,27 +253,65 @@ func animTick() tea.Cmd {
 }
 
 func animTickWithSpeed(cpuUsage float64) tea.Cmd {
-<<<<<<< HEAD
-	// Higher CPU = faster animation (50ms to 300ms)
-	interval := 300 - int(cpuUsage*2.5)
-	if interval < 50 {
-		interval = 50
-	}
-=======
 	// Higher CPU = faster animation.
 	interval := max(300-int(cpuUsage*2.5), 50)
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	return tea.Tick(time.Duration(interval)*time.Millisecond, func(time.Time) tea.Msg { return animTickMsg{} })
 }
 
-func main() {
+// runJSONMode collects metrics once and outputs as JSON.
+func runJSONMode() {
+	collector := NewCollector(processWatchOptionsFromFlags())
+
+	// First collection initializes network state (returns nil for network)
+	_, _ = collector.Collect()
+
+	// Wait 1 second for network rate calculation
+	time.Sleep(1 * time.Second)
+
+	// Second collection has actual network data
+	data, err := collector.Collect()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error collecting metrics: %v\n", err)
+		os.Exit(1)
+	}
+
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		fmt.Fprintf(os.Stderr, "error encoding JSON: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// runTUIMode runs the interactive terminal UI.
+func runTUIMode() {
 	p := tea.NewProgram(newModel(), tea.WithAltScreen())
-<<<<<<< HEAD
-	if err := p.Start(); err != nil {
-=======
 	if _, err := p.Run(); err != nil {
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 		fmt.Fprintf(os.Stderr, "system status error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func main() {
+	flag.Parse()
+	if err := validateFlags(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(2)
+	}
+
+	if shouldUseJSONOutput(*jsonOutput, os.Stdout) {
+		runJSONMode()
+	} else {
+		runTUIMode()
+	}
+}
+
+func activeAlerts(alerts []ProcessAlert) []ProcessAlert {
+	var active []ProcessAlert
+	for _, alert := range alerts {
+		if alert.Status == "active" {
+			active = append(active, alert)
+		}
+	}
+	return active
 }

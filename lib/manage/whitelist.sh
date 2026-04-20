@@ -14,23 +14,9 @@ readonly WHITELIST_CONFIG_CLEAN="$HOME/.config/mole/whitelist"
 readonly WHITELIST_CONFIG_OPTIMIZE="$HOME/.config/mole/whitelist_optimize"
 readonly WHITELIST_CONFIG_OPTIMIZE_LEGACY="$HOME/.config/mole/whitelist_checks"
 
-<<<<<<< HEAD:lib/whitelist_manager.sh
-# Default whitelist patterns (preselected on first run)
-declare -a DEFAULT_WHITELIST_PATTERNS=(
-    "$HOME/Library/Caches/ms-playwright*"
-    "$HOME/.cache/huggingface*"
-    "$HOME/.m2/repository/*"
-    "$HOME/.ollama/models/*"
-    "$HOME/Library/Caches/com.nssurge.surge-mac/*"
-    "$HOME/Library/Application Support/com.nssurge.surge-mac/*"
-    "$HOME/Library/Caches/org.R-project.R/R/renv/*"
-    "FINDER_METADATA"
-)
-=======
 # Default whitelist patterns defined in lib/core/common.sh:
 # - DEFAULT_WHITELIST_PATTERNS
 # - FINDER_METADATA_SENTINEL
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b:lib/manage/whitelist.sh
 
 # Save whitelist patterns to config (defaults to "clean" for legacy callers)
 save_whitelist_patterns() {
@@ -47,13 +33,6 @@ save_whitelist_patterns() {
     local -a patterns
     patterns=("$@")
 
-<<<<<<< HEAD:lib/whitelist_manager.sh
-    cat > "$WHITELIST_CONFIG" << 'EOF'
-# Mole Whitelist - Protected paths won't be deleted
-# Default protections: Playwright browsers, HuggingFace models, Maven repo, Ollama models, Surge Mac, R renv, Finder metadata
-# Add one pattern per line to keep items safe.
-EOF
-=======
     local config_file
     local header_text
 
@@ -68,7 +47,6 @@ EOF
     ensure_user_file "$config_file"
 
     echo -e "$header_text" > "$config_file"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b:lib/manage/whitelist.sh
 
     if [[ ${#patterns[@]} -gt 0 ]]; then
         local -a unique_patterns=()
@@ -116,8 +94,8 @@ VS Code extension and update cache|$HOME/Library/Application Support/Code/Cached
 VS Code system cache (Cursor, VSCodium)|$HOME/Library/Caches/com.microsoft.VSCode/*|ide_cache
 Cursor editor cache|$HOME/Library/Caches/com.todesktop.230313mzl4w4u92/*|ide_cache
 Bazel build cache|$HOME/.cache/bazel/*|compiler_cache
-Go build cache and module cache|$HOME/Library/Caches/go-build/*|compiler_cache
-Go module cache|$HOME/go/pkg/mod/cache/*|compiler_cache
+Go build cache|$HOME/Library/Caches/go-build/*|compiler_cache
+Go module cache|$HOME/go/pkg/mod/*|compiler_cache
 Rust Cargo registry cache|$HOME/.cargo/registry/cache/*|compiler_cache
 Rust documentation cache|$HOME/.rustup/toolchains/*/share/doc/*|compiler_cache
 Rustup toolchain downloads|$HOME/.rustup/downloads/*|compiler_cache
@@ -142,10 +120,12 @@ npm package cache|$HOME/.npm/_cacache/*|package_manager
 pip Python package cache|$HOME/.cache/pip/*|package_manager
 uv Python package cache|$HOME/.cache/uv/*|package_manager
 R renv global cache (virtual environments)|$HOME/Library/Caches/org.R-project.R/R/renv/*|package_manager
+tealdeer tldr pages cache|$HOME/Library/Caches/tealdeer/tldr-pages|package_manager
 Homebrew downloaded packages|$HOME/Library/Caches/Homebrew/*|package_manager
 Yarn package manager cache|$HOME/.cache/yarn/*|package_manager
 pnpm package store|$HOME/Library/pnpm/store/*|package_manager
-Composer PHP dependencies cache|$HOME/.composer/cache/*|package_manager
+Composer PHP dependencies cache (legacy)|$HOME/.composer/cache/*|package_manager
+Composer PHP dependencies cache|$HOME/Library/Caches/composer/*|package_manager
 RubyGems cache|$HOME/.gem/cache/*|package_manager
 Conda packages cache|$HOME/.conda/pkgs/*|package_manager
 Anaconda packages cache|$HOME/anaconda3/pkgs/*|package_manager
@@ -162,15 +142,14 @@ Firefox browser cache|$HOME/Library/Caches/Firefox/*|browser_cache
 Brave browser cache|$HOME/Library/Caches/BraveSoftware/Brave-Browser/*|browser_cache
 Surge proxy cache|$HOME/Library/Caches/com.nssurge.surge-mac/*|network_tools
 Surge configuration and data|$HOME/Library/Application Support/com.nssurge.surge-mac/*|network_tools
-Docker Desktop image cache|$HOME/Library/Containers/com.docker.docker/Data/*|container_cache
+Docker BuildX cache|$HOME/.docker/buildx/cache/*|container_cache
 Podman container cache|$HOME/.local/share/containers/cache/*|container_cache
 Font cache|$HOME/Library/Caches/com.apple.FontRegistry/*|system_cache
 Spotlight metadata cache|$HOME/Library/Caches/com.apple.spotlight/*|system_cache
 CloudKit cache|$HOME/Library/Caches/CloudKit/*|system_cache
-<<<<<<< HEAD:lib/whitelist_manager.sh
-Finder metadata (.DS_Store)|FINDER_METADATA|system_cache
-=======
 Trash|$HOME/.Trash|system_cache
+iOS/iPadOS device firmware (.ipsw) from iTunes/Finder|$HOME/Library/iTunes/*Software Updates/*.ipsw|system_cache
+Apple Configurator 2 device firmware (.ipsw)|$HOME/Library/Group Containers/*.group.com.apple.configurator/**/*.ipsw|system_cache
 EOF
     # Add FINDER_METADATA with constant reference
     echo "Finder metadata, .DS_Store|$FINDER_METADATA_SENTINEL|system_cache"
@@ -191,7 +170,6 @@ TouchID sudo check|check_touchid|config_check
 Rosetta 2 check|check_rosetta|config_check
 Git configuration check|check_git_config|config_check
 Login items check|check_login_items|config_check
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b:lib/manage/whitelist.sh
 EOF
 }
 
@@ -290,11 +268,8 @@ manage_whitelist() {
 }
 
 manage_whitelist_categories() {
-<<<<<<< HEAD:lib/whitelist_manager.sh
-=======
     local mode="$1"
 
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b:lib/manage/whitelist.sh
     # Load currently enabled patterns from both sources
     load_whitelist "$mode"
 
@@ -331,7 +306,7 @@ ${GRAY}Edit: ${display_config}${NC}"
         cache_patterns+=("$pattern")
         menu_options+=("$display_name")
 
-        ((index++)) || true
+        index=$((index + 1))
     done <<< "$items_source"
 
     # Identify custom patterns (not in predefined list)

@@ -40,6 +40,53 @@ note_activity() {
     fi
 }
 
+# Keep the most specific tail of a long purge path visible on the live scan line.
+compact_purge_scan_path() {
+    local path="$1"
+    local max_path_len="${2:-0}"
+
+    if ! [[ "$max_path_len" =~ ^[0-9]+$ ]] || [[ "$max_path_len" -lt 4 ]]; then
+        max_path_len=4
+    fi
+
+    if [[ ${#path} -le $max_path_len ]]; then
+        echo "$path"
+        return
+    fi
+
+    local suffix_len=$((max_path_len - 3))
+    local suffix="${path: -$suffix_len}"
+    local path_tail=""
+    local remainder="$path"
+
+    while [[ "$remainder" == */* ]]; do
+        local segment="/${remainder##*/}"
+        remainder="${remainder%/*}"
+
+        if [[ -z "$path_tail" ]]; then
+            if [[ ${#segment} -le $suffix_len ]]; then
+                path_tail="$segment"
+            else
+                break
+            fi
+            continue
+        fi
+
+        if [[ $((${#segment} + ${#path_tail})) -le $suffix_len ]]; then
+            path_tail="${segment}${path_tail}"
+        else
+            break
+        fi
+    done
+
+    if [[ -n "$path_tail" ]]; then
+        echo "...${path_tail}"
+        return
+    fi
+
+    echo "...$suffix"
+}
+
 # Main purge function
 start_purge() {
     # Set current command for operation logging
@@ -50,7 +97,6 @@ start_purge() {
     if [[ -t 1 ]]; then
         printf '\033[2J\033[H'
     fi
-    printf '\n'
 
     # Initialize stats file in user cache directory
     local stats_dir="${XDG_CACHE_HOME:-$HOME/.cache}/mole"
@@ -68,8 +114,13 @@ perform_purge() {
     local stats_dir="${XDG_CACHE_HOME:-$HOME/.cache}/mole"
     local monitor_pid=""
 
-    # Cleanup function
+    # Cleanup function - use flag to prevent duplicate execution
+    _cleanup_done=false
     cleanup_monitor() {
+        # Prevent multiple cleanup executions from trap conflicts
+        [[ "$_cleanup_done" == "true" ]] && return
+        _cleanup_done=true
+
         # Remove scanning file to stop monitor
         rm -f "$stats_dir/purge_scanning" 2> /dev/null || true
 
@@ -78,87 +129,78 @@ perform_purge() {
             wait "$monitor_pid" 2> /dev/null || true
         fi
         if [[ -t 1 ]]; then
-            printf '\r\033[K\n\033[K\033[A'
+            printf '\r\033[2K\n' > /dev/tty 2> /dev/null || true
         fi
     }
 
-    # Set up trap for cleanup
-    trap cleanup_monitor INT TERM
+    # Ensure Ctrl-C/TERM always stops spinner(s) and exits immediately.
+    handle_interrupt() {
+        cleanup_monitor
+        stop_inline_spinner 2> /dev/null || true
+        show_cursor 2> /dev/null || true
+        printf '\n' >&2
+        exit 130
+    }
 
-    # Show scanning with spinner on same line as title
+    # Set up trap for cleanup + abort
+    trap handle_interrupt INT TERM
+
+    # Show scanning with spinner below the title line
     if [[ -t 1 ]]; then
-        # Print title first
-        printf '%s' "${PURPLE_BOLD}Purge Project Artifacts${NC} "
+        # Print title ONCE with newline; spinner occupies the line below
+        printf '%s\n' "${PURPLE_BOLD}Purge Project Artifacts${NC}"
 
-        # Start background monitor with ASCII spinner
+        # Capture terminal width in parent (most reliable before forking)
+        local _parent_cols=80
+        local _stty_out
+        if _stty_out=$(stty size < /dev/tty 2> /dev/null); then
+            _parent_cols="${_stty_out##* }" # "rows cols" -> take cols
+        else
+            _parent_cols=$(tput cols 2> /dev/null || echo 80)
+        fi
+        [[ "$_parent_cols" =~ ^[0-9]+$ && $_parent_cols -gt 0 ]] || _parent_cols=80
+
+        # Start background monitor: writes directly to /dev/tty to avoid stdout state issues
         (
             local spinner_chars="|/-\\"
             local spinner_idx=0
             local last_path=""
+            # Use parent-captured width; never refresh inside the loop (avoids unreliable tput in bg)
+            local term_cols="$_parent_cols"
+            # Visible prefix "| Scanning " = 11 chars; reserve 25 total for safety margin
+            local max_path_len=$((term_cols - 25))
+            ((max_path_len < 5)) && max_path_len=5
 
-            # Set up trap to exit cleanly
-            trap 'exit 0' INT TERM
-
-            # Function to truncate path in the middle
-            truncate_path() {
-                local path="$1"
-                local term_cols
-                term_cols=$(tput cols 2> /dev/null || echo 80)
-                # Reserve some space for the spinner and text (approx 20 chars)
-                local max_len=$((term_cols - 20))
-                # Ensure a reasonable minimum width
-                if ((max_len < 40)); then
-                    max_len=40
-                fi
-
-                if [[ ${#path} -le $max_len ]]; then
-                    echo "$path"
-                    return
-                fi
-
-                # Calculate how much to show on each side
-                local side_len=$(((max_len - 3) / 2))
-                local start="${path:0:$side_len}"
-                local end="${path: -$side_len}"
-                echo "${start}...${end}"
-            }
+            # Set up trap to exit cleanly (erase the spinner line via /dev/tty)
+            trap 'printf "\r\033[2K" >/dev/tty 2>/dev/null; exit 0' INT TERM
 
             while [[ -f "$stats_dir/purge_scanning" ]]; do
-                local current_path=$(cat "$stats_dir/purge_scanning" 2> /dev/null || echo "")
-                local display_path=""
+                local current_path
+                current_path=$(cat "$stats_dir/purge_scanning" 2> /dev/null || echo "")
 
                 if [[ -n "$current_path" ]]; then
-                    display_path="${current_path/#$HOME/~}"
-                    display_path=$(truncate_path "$display_path")
+                    local display_path="${current_path/#$HOME/~}"
+                    display_path=$(compact_purge_scan_path "$display_path" "$max_path_len")
                     last_path="$display_path"
-                elif [[ -n "$last_path" ]]; then
-                    display_path="$last_path"
                 fi
 
-                # Get current spinner character
                 local spin_char="${spinner_chars:$spinner_idx:1}"
                 spinner_idx=$(((spinner_idx + 1) % ${#spinner_chars}))
 
-                # Show title on first line, spinner and scanning info on second line
-                if [[ -n "$display_path" ]]; then
-                    # Line 1: Move to start, clear, print title
-                    printf '\r\033[K%s\n' "${PURPLE_BOLD}Purge Project Artifacts${NC}"
-                    # Line 2: Move to start, clear, print scanning info
-                    printf '\r\033[K%s %sScanning %s' \
+                # Write directly to /dev/tty: \033[2K clears entire current line, \r goes to start
+                if [[ -n "$last_path" ]]; then
+                    printf '\r\033[2K%s %sScanning %s%s' \
                         "${BLUE}${spin_char}${NC}" \
-                        "${GRAY}" "$display_path"
-                    # Move up THEN to start (important order!)
-                    printf '\033[A\r'
+                        "${GRAY}" "$last_path" "${NC}" > /dev/tty 2> /dev/null
                 else
-                    printf '\r\033[K%s\n' "${PURPLE_BOLD}Purge Project Artifacts${NC}"
-                    printf '\r\033[K%s %sScanning...' \
+                    printf '\r\033[2K%s %sScanning...%s' \
                         "${BLUE}${spin_char}${NC}" \
-                        "${GRAY}"
-                    printf '\033[A\r'
+                        "${GRAY}" "${NC}" > /dev/tty 2> /dev/null
                 fi
 
                 sleep 0.05
             done
+            printf '\r\033[2K' > /dev/tty 2> /dev/null
             exit 0
         ) &
         monitor_pid=$!
@@ -172,10 +214,6 @@ perform_purge() {
     # Clean up
     trap - INT TERM
     cleanup_monitor
-
-    if [[ -t 1 ]]; then
-        echo -e "${PURPLE_BOLD}Purge Project Artifacts${NC}"
-    fi
 
     # Exit codes:
     # 0 = success, show summary
@@ -203,19 +241,24 @@ perform_purge() {
         rm -f "$stats_dir/purge_count"
     fi
 
+    if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
+        summary_heading="Dry run complete - no changes made"
+    fi
+
     if [[ $total_size_cleaned -gt 0 ]]; then
-        local freed_gb
-        freed_gb=$(echo "$total_size_cleaned" | awk '{printf "%.2f", $1/1024/1024}')
+        local freed_size_human
+        freed_size_human=$(bytes_to_human_kb "$total_size_cleaned")
 
-        summary_details+=("Space freed: ${GREEN}${freed_gb}GB${NC}")
-        summary_details+=("Free space now: $(get_free_space)")
-
-        if [[ $total_items_cleaned -gt 0 ]]; then
-            summary_details+=("Items cleaned: $total_items_cleaned")
+        local summary_line="Space freed: ${GREEN}${freed_size_human}${NC}"
+        if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
+            summary_line="Would free: ${GREEN}${freed_size_human}${NC}"
         fi
+        [[ $total_items_cleaned -gt 0 ]] && summary_line+=" | Items: $total_items_cleaned"
+        summary_line+=" | Free: $(get_free_space)"
+        summary_details+=("$summary_line")
     else
         summary_details+=("No old project artifacts to clean.")
-        summary_details+=("Free space now: $(get_free_space)")
+        summary_details+=("Free space: $(get_free_space)")
     fi
 
     # Log session end
@@ -233,6 +276,7 @@ show_help() {
     echo ""
     echo -e "${YELLOW}Options:${NC}"
     echo "  --paths         Edit custom scan directories"
+    echo "  --dry-run       Preview purge actions without making changes"
     echo "  --debug         Enable debug logging"
     echo "  --help          Show this help message"
     echo ""
@@ -262,6 +306,9 @@ main() {
             "--debug")
                 export MO_DEBUG=1
                 ;;
+            "--dry-run" | "-n")
+                export MOLE_DRY_RUN=1
+                ;;
             *)
                 echo "Unknown option: $arg"
                 echo "Use 'mo purge --help' for usage information"
@@ -271,9 +318,21 @@ main() {
     done
 
     start_purge
+    if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
+        echo -e "${YELLOW}${ICON_DRY_RUN} DRY RUN MODE${NC}, No project artifacts will be removed"
+        printf '\n'
+    fi
     hide_cursor
     perform_purge
     show_cursor
 }
+
+if [[ "${MOLE_SKIP_MAIN:-0}" == "1" ]]; then
+    if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+        return 0
+    else
+        exit 0
+    fi
+fi
 
 main "$@"

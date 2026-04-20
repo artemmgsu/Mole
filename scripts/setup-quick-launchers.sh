@@ -14,13 +14,18 @@ ICON_SUCCESS="✓"
 ICON_WARN="!"
 ICON_ERR="✗"
 
+LAUNCHER_COMMAND_SPECS=(
+    "clean|Mole Clean|Deep system cleanup with Mole|Run Mole clean"
+    "uninstall|Mole Uninstall|Uninstall applications with Mole|Uninstall apps via Mole"
+    "optimize|Mole Optimize|System health checks and optimization|System health and optimization"
+    "analyze|Mole Analyze|Disk space analysis with Mole|Disk space analysis"
+    "status|Mole Status|Live system status dashboard|Live system dashboard"
+)
+
 log_step() { echo -e "${BLUE}${ICON_STEP}${NC} $1"; }
 log_success() { echo -e "${GREEN}${ICON_SUCCESS}${NC} $1"; }
 log_warn() { echo -e "${YELLOW}${ICON_WARN}${NC} $1"; }
 log_error() { echo -e "${RED}${ICON_ERR}${NC} $1"; }
-<<<<<<< HEAD
-
-=======
 log_header() { echo -e "\n${BLUE}==== $1 ====${NC}\n"; }
 is_interactive() { [[ -t 1 && -r /dev/tty ]]; }
 prompt_enter() {
@@ -31,7 +36,6 @@ prompt_enter() {
         echo "$prompt"
     fi
 }
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 detect_mo() {
     if command -v mo > /dev/null 2>&1; then
         command -v mo
@@ -46,11 +50,13 @@ detect_mo() {
 write_raycast_script() {
     local target="$1"
     local title="$2"
-    local mo_bin="$3"
-    local subcommand="$4"
-    local raw_cmd="\"${mo_bin}\" ${subcommand}"
-    local cmd_escaped="${raw_cmd//\\/\\\\}"
-    cmd_escaped="${cmd_escaped//\"/\\\"}"
+    local description="$3"
+    local mo_bin="$4"
+    local subcommand="$5"
+
+    local cmd_for_applescript="${mo_bin//\\/\\\\}"
+    cmd_for_applescript="${cmd_for_applescript//\"/\\\"}"
+
     cat > "$target" << EOF
 #!/bin/bash
 
@@ -59,16 +65,23 @@ write_raycast_script() {
 # @raycast.title ${title}
 # @raycast.mode fullOutput
 # @raycast.packageName Mole
+# @raycast.description ${description}
 
 # Optional parameters:
 # @raycast.icon 🐹
+
+# ──────────────────────────────────────────────────────────
+# Script execution begins below
+# ──────────────────────────────────────────────────────────
 
 set -euo pipefail
 
 echo "🐹 Running ${title}..."
 echo ""
-CMD="${raw_cmd}"
-CMD_ESCAPED="${cmd_escaped}"
+
+MO_BIN="${mo_bin}"
+MO_SUBCOMMAND="${subcommand}"
+MO_BIN_ESCAPED="${cmd_for_applescript}"
 
 has_app() {
     local name="\$1"
@@ -117,8 +130,8 @@ launch_with_app() {
     case "\$app" in
         Terminal)
             if command -v osascript >/dev/null 2>&1; then
-                osascript <<'APPLESCRIPT'
-set targetCommand to "${cmd_escaped}"
+                osascript <<APPLESCRIPT
+set targetCommand to "\${MO_BIN_ESCAPED} \${MO_SUBCOMMAND}"
 tell application "Terminal"
     activate
     do script targetCommand
@@ -129,8 +142,8 @@ APPLESCRIPT
             ;;
         iTerm|iTerm2)
             if command -v osascript >/dev/null 2>&1; then
-                osascript <<'APPLESCRIPT'
-set targetCommand to "${cmd_escaped}"
+                osascript <<APPLESCRIPT
+set targetCommand to "\${MO_BIN_ESCAPED} \${MO_SUBCOMMAND}"
 tell application "iTerm2"
     activate
     try
@@ -154,52 +167,49 @@ APPLESCRIPT
             ;;
         Alacritty)
             if launcher_available "Alacritty" && command -v open >/dev/null 2>&1; then
-                open -na "Alacritty" --args -e /bin/zsh -lc "${raw_cmd}"
+                open -na "Alacritty" --args -e /bin/zsh -lc "\"\${MO_BIN}\" \${MO_SUBCOMMAND}"
                 return \$?
             fi
             ;;
         Kitty)
             if has_bin "kitty"; then
-                kitty --hold /bin/zsh -lc "${raw_cmd}"
+                kitty --hold /bin/zsh -lc "\"\${MO_BIN}\" \${MO_SUBCOMMAND}"
                 return \$?
             elif [[ -x "/Applications/kitty.app/Contents/MacOS/kitty" ]]; then
-                "/Applications/kitty.app/Contents/MacOS/kitty" --hold /bin/zsh -lc "${raw_cmd}"
+                "/Applications/kitty.app/Contents/MacOS/kitty" --hold /bin/zsh -lc "\"\${MO_BIN}\" \${MO_SUBCOMMAND}"
                 return \$?
             fi
             ;;
         WezTerm)
             if has_bin "wezterm"; then
-                wezterm start -- /bin/zsh -lc "${raw_cmd}"
+                wezterm start -- /bin/zsh -lc "\"\${MO_BIN}\" \${MO_SUBCOMMAND}"
                 return \$?
             elif [[ -x "/Applications/WezTerm.app/Contents/MacOS/wezterm" ]]; then
-                "/Applications/WezTerm.app/Contents/MacOS/wezterm" start -- /bin/zsh -lc "${raw_cmd}"
+                "/Applications/WezTerm.app/Contents/MacOS/wezterm" start -- /bin/zsh -lc "\"\${MO_BIN}\" \${MO_SUBCOMMAND}"
                 return \$?
             fi
             ;;
         Ghostty)
-            if has_bin "ghostty"; then
-                ghostty --command "/bin/zsh" -- -lc "${raw_cmd}"
-                return \$?
-            elif [[ -x "/Applications/Ghostty.app/Contents/MacOS/ghostty" ]]; then
-                "/Applications/Ghostty.app/Contents/MacOS/ghostty" --command "/bin/zsh" -- -lc "${raw_cmd}"
+            if launcher_available "Ghostty" && command -v open >/dev/null 2>&1; then
+                open -na "Ghostty" --args -e /bin/zsh -lc "\"\${MO_BIN}\" \${MO_SUBCOMMAND}; exec /bin/zsh -l"
                 return \$?
             fi
             ;;
         Hyper)
             if launcher_available "Hyper" && command -v open >/dev/null 2>&1; then
-                open -na "Hyper" --args /bin/zsh -lc "${raw_cmd}"
+                open -na "Hyper" --args /bin/zsh -lc "\"\${MO_BIN}\" \${MO_SUBCOMMAND}"
                 return \$?
             fi
             ;;
         WindTerm)
             if launcher_available "WindTerm" && command -v open >/dev/null 2>&1; then
-                open -na "WindTerm" --args /bin/zsh -lc "${raw_cmd}"
+                open -na "WindTerm" --args /bin/zsh -lc "\"\${MO_BIN}\" \${MO_SUBCOMMAND}"
                 return \$?
             fi
             ;;
         Warp)
             if launcher_available "Warp" && command -v open >/dev/null 2>&1; then
-                open -na "Warp" --args /bin/zsh -lc "${raw_cmd}"
+                open -na "Warp" --args /bin/zsh -lc "\"\${MO_BIN}\" \${MO_SUBCOMMAND}"
                 return \$?
             fi
             ;;
@@ -208,7 +218,7 @@ APPLESCRIPT
 }
 
 if [[ -n "\${TERM:-}" && "\${TERM}" != "dumb" ]]; then
-    "${mo_bin}" ${subcommand}
+    "\${MO_BIN}" \${MO_SUBCOMMAND}
     exit \$?
 fi
 
@@ -227,7 +237,7 @@ fi
 
 echo "TERM environment variable not set and no launcher succeeded."
 echo "Run this manually:"
-echo "    ${raw_cmd}"
+echo "    \"\${MO_BIN}\" \${MO_SUBCOMMAND}"
 exit 1
 EOF
     chmod +x "$target"
@@ -236,83 +246,35 @@ EOF
 create_raycast_commands() {
     local mo_bin="$1"
     local default_dir="$HOME/Library/Application Support/Raycast/script-commands"
-<<<<<<< HEAD
-    local alt_dir="$HOME/Documents/Raycast/Scripts"
-    local dirs=()
-
-    if [[ -d "$default_dir" ]]; then
-        dirs+=("$default_dir")
-    fi
-    if [[ -d "$alt_dir" ]]; then
-        dirs+=("$alt_dir")
-    fi
-    if [[ ${#dirs[@]} -eq 0 ]]; then
-        dirs+=("$default_dir")
-    fi
-
-    log_step "Installing Raycast commands..."
-    for dir in "${dirs[@]}"; do
-        mkdir -p "$dir"
-        write_raycast_script "$dir/mole-clean.sh" "clean" "$mo_bin" "clean"
-        write_raycast_script "$dir/mole-uninstall.sh" "uninstall" "$mo_bin" "uninstall"
-        write_raycast_script "$dir/mole-optimize.sh" "optimize" "$mo_bin" "optimize"
-        write_raycast_script "$dir/mole-analyze.sh" "analyze" "$mo_bin" "analyze"
-        write_raycast_script "$dir/mole-status.sh" "status" "$mo_bin" "status"
-        log_success "Scripts ready in: $dir"
-    done
-
-    echo ""
-    if open "raycast://extensions/script-commands" > /dev/null 2>&1; then
-        log_step "Raycast settings opened."
-    else
-        log_warn "Could not auto-open Raycast."
-    fi
-
-    echo ""
-    echo "Next steps to activate Raycast commands:"
-    echo "  1. Open Raycast (⌘ Space)"
-    echo "  2. Search for 'Reload Script Directories'"
-    echo "  3. Press Enter to load new commands"
-=======
     local dir="$default_dir"
+    local entry
+    local subcommand
+    local title
+    local description
+    local alfred_subtitle
 
     log_step "Installing Raycast commands..."
     mkdir -p "$dir"
-    write_raycast_script "$dir/mole-clean.sh" "clean" "$mo_bin" "clean"
-    write_raycast_script "$dir/mole-uninstall.sh" "uninstall" "$mo_bin" "uninstall"
-    write_raycast_script "$dir/mole-optimize.sh" "optimize" "$mo_bin" "optimize"
-    write_raycast_script "$dir/mole-analyze.sh" "analyze" "$mo_bin" "analyze"
-    write_raycast_script "$dir/mole-status.sh" "status" "$mo_bin" "status"
+    for entry in "${LAUNCHER_COMMAND_SPECS[@]}"; do
+        IFS="|" read -r subcommand title description alfred_subtitle <<< "$entry"
+        write_raycast_script "$dir/mole-${subcommand}.sh" "$title" "$description" "$mo_bin" "$subcommand"
+    done
     log_success "Scripts ready in: $dir"
 
     log_header "Raycast Configuration"
-    if command -v open > /dev/null 2>&1; then
-        if open "raycast://extensions/raycast/raycast-settings/extensions" > /dev/null 2>&1; then
-            log_step "Raycast settings opened."
-        else
-            log_warn "Could not auto-open Raycast."
-        fi
-    else
-        log_warn "open command not available; please open Raycast manually."
-    fi
-
-    echo "If Raycast asks to add a Script Directory, use:"
-    echo "  $dir"
+    log_step "Open Raycast → Settings → Extensions → Script Commands."
+    echo "1. Click \"+\" → Add Script Directory."
+    echo "2. Choose: $dir"
+    echo "3. Click \"Reload Script Directories\"."
 
     if is_interactive; then
         log_header "Finalizing Setup"
-        prompt_enter "Press [Enter] to reload script directories in Raycast..."
-        if command -v open > /dev/null 2>&1 && open "raycast://extensions/raycast/raycast/reload-script-directories" > /dev/null 2>&1; then
-            log_step "Raycast script directories reloaded."
-        else
-            log_warn "Could not auto-reload Raycast script directories."
-        fi
-
+        log_warn "Please complete the Raycast steps above before continuing."
+        prompt_enter "Press [Enter] to continue..."
         log_success "Raycast setup complete!"
     else
         log_warn "Non-interactive mode; skip Raycast reload. Please run 'Reload Script Directories' in Raycast."
     fi
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 }
 
 uuid() {
@@ -329,31 +291,25 @@ create_alfred_workflow() {
     local mo_bin="$1"
     local prefs_dir="${ALFRED_PREFS_DIR:-$HOME/Library/Application Support/Alfred/Alfred.alfredpreferences}"
     local workflows_dir="$prefs_dir/workflows"
+    local entry
+    local subcommand
+    local title
+    local subtitle
+    local bundle
+    local keyword
+    local command
 
     if [[ ! -d "$workflows_dir" ]]; then
-<<<<<<< HEAD
-        log_warn "Alfred preferences not found at $workflows_dir. Skipping Alfred workflow."
-=======
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
         return
     fi
 
     log_step "Installing Alfred workflows..."
-    local workflows=(
-        "fun.tw93.mole.clean|Mole clean|clean|Run Mole clean|\"${mo_bin}\" clean"
-        "fun.tw93.mole.uninstall|Mole uninstall|uninstall|Uninstall apps via Mole|\"${mo_bin}\" uninstall"
-        "fun.tw93.mole.optimize|Mole optimize|optimize|System health & optimization|\"${mo_bin}\" optimize"
-        "fun.tw93.mole.analyze|Mole analyze|analyze|Disk space analysis|\"${mo_bin}\" analyze"
-        "fun.tw93.mole.status|Mole status|status|Live system dashboard|\"${mo_bin}\" status"
-    )
-
-    for entry in "${workflows[@]}"; do
-        IFS="|" read -r bundle name keyword subtitle command <<< "$entry"
-<<<<<<< HEAD
-        local workflow_uid="user.workflow.$(uuid | tr '[:upper:]' '[:lower:]')"
-=======
+    for entry in "${LAUNCHER_COMMAND_SPECS[@]}"; do
+        IFS="|" read -r subcommand title _ subtitle <<< "$entry"
+        bundle="fun.tw93.mole.${subcommand}"
+        keyword="${subcommand}"
+        command="\"${mo_bin}\" ${subcommand}"
         local workflow_uid="user.workflow.$(uuid | LC_ALL=C tr '[:upper:]' '[:lower:]')"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
         local input_uid
         local action_uid
         input_uid="$(uuid)"
@@ -371,7 +327,7 @@ create_alfred_workflow() {
     <key>createdby</key>
     <string>Mole</string>
     <key>name</key>
-    <string>${name}</string>
+    <string>${title}</string>
     <key>objects</key>
     <array>
         <dict>
@@ -384,7 +340,7 @@ create_alfred_workflow() {
                 <key>subtext</key>
                 <string>${subtitle}</string>
                 <key>text</key>
-                <string>${name}</string>
+                <string>${title}</string>
                 <key>withspace</key>
                 <true/>
             </dict>
@@ -443,11 +399,7 @@ ${command}
 </dict>
 </plist>
 EOF
-<<<<<<< HEAD
-        log_success "Workflow ready: ${name} (keyword: ${keyword})"
-=======
-        log_success "Workflow ready: ${name}, keyword: ${keyword}"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
+        log_success "Workflow ready: ${title}, keyword: ${keyword}"
     done
 
     log_step "Open Alfred preferences → Workflows if you need to adjust keywords."
@@ -468,19 +420,13 @@ main() {
 
     echo ""
     log_success "Done! Raycast and Alfred are ready with 5 commands:"
-<<<<<<< HEAD
-    echo "  • clean - Deep system cleanup"
-    echo "  • uninstall - Remove applications"
-    echo "  • optimize - System health & tuning"
-    echo "  • analyze - Disk space explorer"
-    echo "  • status - Live system monitor"
-=======
-    echo "  • clean, Deep system cleanup"
-    echo "  • uninstall, Remove applications"
-    echo "  • optimize, System health & tuning"
-    echo "  • analyze, Disk space explorer"
-    echo "  • status, Live system monitor"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
+    local entry
+    local subcommand
+    local title
+    for entry in "${LAUNCHER_COMMAND_SPECS[@]}"; do
+        IFS="|" read -r subcommand title _ _ <<< "$entry"
+        echo "  • Raycast: ${title} | Alfred keyword: ${subcommand}"
+    done
     echo ""
 }
 

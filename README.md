@@ -1,10 +1,6 @@
 <div align="center">
   <h1>Mole</h1>
-<<<<<<< HEAD
-  <p><em>Dig deep like a mole to optimize your Mac.</em></p>
-=======
   <p><em>Deep clean and optimize your Mac.</em></p>
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 </div>
 
 <p align="center">
@@ -17,71 +13,42 @@
 </p>
 
 <p align="center">
-<<<<<<< HEAD
-  <img src="https://cdn.tw93.fun/img/mole.jpeg" alt="Mole - 95.50GB freed" width="800" />
-=======
-  <img src="https://cdn.tw93.fun/img/mole.jpeg" alt="Mole - 95.50GB freed" width="1000" />
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
+  <img src="https://gw.alipayobjects.com/zos/k/ro/ZzF8e8.png" alt="Mole - 95.50GB freed" width="1000" />
 </p>
 
 ## Features
 
-<<<<<<< HEAD
-1. All-in-one toolkit equal to CleanMyMac + AppCleaner + DaisyDisk + Sensei + iStat in one trusted binary.
-2. Deep cleanup finds and removes caches, temp files, browser leftovers, and junk to free up tens of gigabytes.
-3. Smart uninstall finds app bundles plus launch agents, settings, caches, logs, and leftover files.
-4. Disk insight + optimization show large files, display folders, rebuild caches, clean swap, refresh services.
-5. Live status shows CPU, GPU, memory, disk, network, battery, and proxy data so you can find problems.
-=======
-- **All-in-one toolkit**: CleanMyMac, AppCleaner, DaisyDisk, and iStat Menus combined into a **single binary**
-- **Deep cleaning**: Scans and removes caches, logs, and browser leftovers to **reclaim gigabytes of space**
-- **Smart uninstaller**: Thoroughly removes apps along with launch agents, preferences, and **hidden remnants**
-- **Disk insights**: Visualizes usage, manages large files, **rebuilds caches**, and refreshes system services
-- **Live monitoring**: Real-time stats for CPU, GPU, memory, disk, and network to **diagnose performance issues**
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
+- **All-in-one toolkit**: Combines CleanMyMac, AppCleaner, DaisyDisk, and iStat Menus in a **single binary**
+- **Deep cleaning**: Removes caches, logs, browser leftovers, and orphaned app data to **reclaim gigabytes of space**
+- **Smart uninstaller**: Removes apps plus launch agents, preferences, and **hidden remnants**
+- **Disk insights**: Visualizes usage, finds large files, **rebuilds caches**, and refreshes system services
+- **Live monitoring**: Shows real-time CPU, GPU, memory, disk, and network stats
 
 ## Quick Start
 
-**Install via Homebrew:**
+**Install via Homebrew**
 
 ```bash
 brew install mole
 ```
 
-**Or via script:**
+**Or via script**
 
 ```bash
 # Optional args: -s latest for main branch code, -s 1.17.0 for specific version
 curl -fsSL https://raw.githubusercontent.com/tw93/mole/main/install.sh | bash
 ```
 
-**Windows:** Mole is designed for macOS, but we offer an experimental Windows version based on user demand. See the [windows branch](https://github.com/tw93/Mole/tree/windows), for early adopters only.
+> Note: Mole is built for macOS. An experimental Windows version is available in the [windows branch](https://github.com/tw93/Mole/tree/windows) for early adopters.
 
-**Run:**
+**Run**
 
 ```bash
-<<<<<<< HEAD
-mo                      # Interactive menu
-mo clean                # Deep cleanup
-mo clean --dry-run      # Preview cleanup plan
-mo clean --whitelist    # Adjust protected caches
-mo uninstall            # Remove apps + leftovers
-mo optimize             # Refresh caches & services
-mo analyze              # Visual disk explorer
-mo status               # Live system health dashboard
-
-mo touchid              # Configure Touch ID for sudo
-mo update               # Update Mole
-mo remove               # Remove Mole from system
-mo --help               # Show help
-mo --version            # Show installed version
-
-=======
 mo                           # Interactive menu
-mo clean                     # Deep cleanup
-mo uninstall                 # Remove apps + leftovers
+mo clean                     # Deep cleanup + already-uninstalled app leftovers
+mo uninstall                 # Remove installed apps + their leftovers
 mo optimize                  # Refresh caches & services
-mo analyze                   # Visual disk explorer
+mo analyze                   # Visual disk explorer (or 'mo analyse')
 mo status                    # Live system health dashboard
 mo purge                     # Clean project build artifacts
 mo installer                 # Find and remove installer files
@@ -89,39 +56,43 @@ mo installer                 # Find and remove installer files
 mo touchid                   # Configure Touch ID for sudo
 mo completion                # Set up shell tab completion
 mo update                    # Update Mole
+mo update --nightly          # Update to latest unreleased main build, script install only
 mo remove                    # Remove Mole from system
 mo --help                    # Show help
 mo --version                 # Show installed version
-
-mo clean --dry-run           # Preview the cleanup plan
-mo clean --whitelist         # Manage protected caches
-mo clean --dry-run --debug   # Detailed preview with risk levels and file info
-
-mo optimize --dry-run        # Preview optimization actions
-mo optimize --debug          # Run with detailed operation logs
-mo optimize --whitelist      # Manage protected optimization rules
-mo purge --paths             # Configure project scan directories
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 ```
+
+**Preview safely**
+
+```bash
+mo clean --dry-run
+mo uninstall --dry-run
+mo purge --dry-run
+
+# Also works with: optimize, installer, remove, completion, touchid enable
+mo clean --dry-run --debug   # Preview + detailed logs
+mo optimize --whitelist      # Manage protected optimization rules
+mo clean --whitelist         # Manage protected caches
+mo purge --paths             # Configure project scan directories
+mo analyze /Volumes          # Analyze external drives only
+```
+
+## Security & Safety Design
+
+Mole is a local system maintenance tool, and some commands can perform destructive local operations.
+
+Mole uses safety-first defaults: path validation, protected-directory rules, conservative cleanup boundaries, and explicit confirmation for higher-risk actions. When risk or uncertainty is high, Mole skips, refuses, or requires stronger confirmation rather than broadening deletion scope.
+
+`mo analyze` is safer for ad hoc cleanup because it moves files to Trash through Finder instead of deleting them directly.
+
+Review [SECURITY.md](SECURITY.md) and [SECURITY_AUDIT.md](SECURITY_AUDIT.md) for reporting guidance, safety boundaries, and current limitations.
 
 ## Tips
 
-<<<<<<< HEAD
-- Safety first, if your Mac is very important, wait for Mole to become stable before full cleanups.
-- Preview the cleanup by running `mo clean --dry-run` and reviewing the list.
-- Use `mo clean --whitelist` to manage protected caches.
-- Use `mo touchid` to approve sudo with Touch ID instead of typing your password.
-- Prefer Vim-style navigation? All menus understand `h/j/k/l` in addition to the arrow keys.
-=======
-- **Terminal**: iTerm2 has known compatibility issues; we recommend Alacritty, kitty, WezTerm, Ghostty, or Warp.
-- **Safety**: Built with strict protections. See [Security Audit](SECURITY_AUDIT.md). Preview changes with `mo clean --dry-run`.
-- **Be Careful**: Although safe by design, file deletion is permanent. Please review operations carefully.
-- **Debug Mode**: Use `--debug` for detailed logs (e.g., `mo clean --debug`). Combine with `--dry-run` for comprehensive preview including risk levels and file details.
-- **Operation Log**: File operations are logged to `~/.config/mole/operations.log` for troubleshooting. Disable with `MO_NO_OPLOG=1`.
-- **Navigation**: Supports arrow keys and Vim bindings (`h/j/k/l`).
-- **Status Shortcuts**: In `mo status`, press `k` to toggle cat visibility and save preference, `q` to quit.
-- **Configuration**: Run `mo touchid` for Touch ID sudo, `mo completion` for shell tab completion, `mo clean --whitelist` to manage protected paths.
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
+- Video tutorial: Watch the [Mole tutorial video](https://www.youtube.com/watch?v=UEe9-w4CcQ0), thanks to PAPAYA 電腦教室.
+- Safety and logs: `clean`, `uninstall`, `purge`, `installer`, and `remove` are destructive. Review with `--dry-run` first, and add `--debug` when needed. File operations are logged to `~/Library/Logs/mole/operations.log`. Disable with `MO_NO_OPLOG=1`. Review [SECURITY.md](SECURITY.md) and [SECURITY_AUDIT.md](SECURITY_AUDIT.md).
+- App leftovers: use `mo clean` when the app is already uninstalled, and `mo uninstall` when the app is still installed.
+- Navigation: Mole supports arrow keys and Vim bindings `h/j/k/l`.
 
 ## Features in Detail
 
@@ -137,16 +108,14 @@ Scanning cache directories...
   ✓ Developer tools (Xcode, Node.js, npm)                    23.3GB
   ✓ System logs and temp files                                3.8GB
   ✓ App-specific cache (Spotify, Dropbox, Slack)              8.4GB
-<<<<<<< HEAD
-  ✓ Trash                                                     12.3GB
-=======
   ✓ Trash                                                    12.3GB
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 
 ====================================================================
 Space freed: 95.5GB | Free space now: 223.5GB
 ====================================================================
 ```
+
+Note: In `mo clean` -> Developer tools, Mole removes unused CoreSimulator `Volumes/Cryptex` entries and skips `IN_USE` items.
 
 ### Smart App Uninstaller
 
@@ -159,17 +128,15 @@ Select Apps to Remove
   ☐ IntelliJ IDEA             (2.8G) | Recent
   ☐ Premiere Pro              (3.4G) | Recent
 
-<<<<<<< HEAD
-Uninstalling: Adobe Creative Cloud
-=======
 Uninstalling: Photoshop 2024
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 
   ✓ Removed application
   ✓ Cleaned 52 related files across 12 locations
     - Application Support, Caches, Preferences
     - Logs, WebKit storage, Cookies
     - Extensions, Plugins, Launch daemons
+
+Note: On macOS 15 and later, Local Network permission entries can outlive app removal. Mole warns when an uninstalled app declares Local Network usage, but it does not auto-reset `/Volumes/Data/Library/Preferences/com.apple.networkextension*.plist` because that reset is global and requires Recovery mode.
 
 ====================================================================
 Space freed: 12.8GB
@@ -193,14 +160,13 @@ System: 5/32 GB RAM | 333/460 GB Disk (72%) | Uptime 6d
 ====================================================================
 System optimization completed
 ====================================================================
-<<<<<<< HEAD
-=======
 
 Use `mo optimize --whitelist` to exclude specific optimizations.
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 ```
 
 ### Disk Space Analyzer
+
+> Note: By default, Mole skips external drives under `/Volumes` for faster startup. To inspect them, run `mo analyze /Volumes` or a specific mount path.
 
 ```bash
 $ mo analyze
@@ -213,16 +179,12 @@ Analyze Disk  ~/Documents  |  Total: 156.8GB
     4. ███░░░░░░░░░░░░░░░░  10.8%  |  📁 Documents                   16.9GB
     5. ██░░░░░░░░░░░░░░░░░   5.2%  |  📄 backup_2023.zip              8.2GB
 
-<<<<<<< HEAD
-  ↑↓←→ Navigate  |  O Open  |  F Show  |  ⌫ Delete  |  L Large(24)  |  Q Quit
-=======
   ↑↓←→ Navigate  |  O Open  |  F Show  |  ⌫ Delete  |  L Large files  |  Q Quit
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 ```
 
 ### Live System Status
 
-Real-time dashboard with system health score, hardware info, and performance metrics.
+Real-time dashboard with health score, hardware info, and performance metrics.
 
 ```bash
 $ mo status
@@ -242,24 +204,60 @@ Read    ▮▯▯▯▯  2.1 MB/s                  Health  Normal · 423 cycles
 Write   ▮▮▮▯▯  18.3 MB/s                 Temp    58°C · 1200 RPM
 
 ⇅ Network                                ▶ Processes
-<<<<<<< HEAD
-Down    ▮▮▯▯▯  3.2 MB/s                  Code       ▮▮▮▮▯  42.1%
-Up      ▮▯▯▯▯  0.8 MB/s                  Chrome     ▮▮▮▯▯  28.3%
-Proxy   HTTP · 192.168.1.100             Terminal   ▮▯▯▯▯  12.5%
-```
-
-Health score calculated from CPU, memory, disk, temperature, and I/O load. Color-coded by range.
-=======
 Down    ▁▁█▂▁▁▁▁▁▁▁▁▇▆▅▂  0.54 MB/s      Code       ▮▮▮▮▯  42.1%
 Up      ▄▄▄▃▃▃▄▆▆▇█▁▁▁▁▁  0.02 MB/s      Chrome     ▮▮▮▯▯  28.3%
 Proxy   HTTP · 192.168.1.100             Terminal   ▮▯▯▯▯  12.5%
 ```
 
-Health score based on CPU, memory, disk, temperature, and I/O load. Color-coded by range.
+Health score is based on CPU, memory, disk, temperature, and I/O load, with color-coded ranges.
+
+Shortcuts: In `mo status`, press `k` to toggle the cat and save the preference, and `q` to quit.
+
+When enabled, `mo status` shows a read-only alert banner for processes that stay above the configured CPU threshold for a sustained window. Use `--proc-cpu-threshold`, `--proc-cpu-window`, or `--proc-cpu-alerts=false` to tune or disable it.
+
+#### Machine-Readable Output
+
+Both `mo analyze` and `mo status` support a `--json` flag for scripting and automation.
+
+`mo status` also auto-detects when its output is piped (not a terminal) and switches to JSON automatically.
+
+```bash
+# Disk analysis as JSON
+$ mo analyze --json ~/Documents
+{
+  "path": "/Users/you/Documents",
+  "overview": false,
+  "entries": [
+    { "name": "Library", "path": "...", "size": 80939438080, "is_dir": true },
+    ...
+  ],
+  "large_files": [
+    { "name": "backup.zip", "path": "...", "size": 8796093022 }
+  ],
+  "total_size": 168393441280,
+  "total_files": 42187
+}
+
+# System status as JSON
+$ mo status --json
+{
+  "host": "MacBook-Pro",
+  "health_score": 92,
+  "cpu": { "usage": 45.2, "logical_cpu": 8, ... },
+  "memory": { "total": 25769803776, "used": 15049334784, "used_percent": 58.4 },
+  "disks": [ ... ],
+  "uptime": "3d 12h 45m",
+  ...
+}
+
+# Auto-detected JSON when piped
+$ mo status | jq '.health_score'
+92
+```
 
 ### Project Artifact Purge
 
-Clean old build artifacts (`node_modules`, `target`, `build`, `dist`, etc.) from your projects to free up disk space.
+Clean old build artifacts such as `node_modules`, `target`, `.build`, `build`, and `dist` to free up disk space.
 
 ```bash
 mo purge
@@ -276,12 +274,15 @@ Select Categories to Clean - 18.5GB (8 selected)
   ● backend-service    2.5GB | node_modules
 ```
 
-> **Use with caution:** This will permanently delete selected artifacts. Review carefully before confirming. Recent projects, less than 7 days old, are marked and unselected by default.
+> Note: We recommend installing `fd` on macOS.
+> `brew install fd`
+
+> Safety: This permanently deletes selected artifacts. Review carefully before confirming. Projects newer than 7 days are marked and unselected by default.
 
 <details>
 <summary><strong>Custom Scan Paths</strong></summary>
 
-Run `mo purge --paths` to configure which directories to scan, or edit `~/.config/mole/purge_paths` directly:
+Run `mo purge --paths` to configure scan directories, or edit `~/.config/mole/purge_paths` directly:
 
 ```shell
 ~/Documents/MyProjects
@@ -289,13 +290,13 @@ Run `mo purge --paths` to configure which directories to scan, or edit `~/.confi
 ~/Work/ClientB
 ```
 
-When custom paths are configured, only those directories are scanned. Otherwise, it defaults to `~/Projects`, `~/GitHub`, `~/dev`, etc.
+When custom paths are configured, Mole scans only those directories. Otherwise, it uses defaults like `~/Projects`, `~/GitHub`, and `~/dev`.
 
 </details>
 
 ### Installer Cleanup
 
-Find and remove large installer files scattered across Downloads, Desktop, Homebrew caches, iCloud, and Mail. Each file is labeled by source to help you know where the space is hiding.
+Find and remove large installer files across Downloads, Desktop, Homebrew caches, iCloud, and Mail. Each file is labeled by source.
 
 ```bash
 mo installer
@@ -309,36 +310,37 @@ Select Installers to Remove - 3.8GB (5 selected)
   ● Acrobat_Reader.dmg      220.4MB | Downloads
   ○ AppCode_Legacy.zip      410.6MB | Downloads
 ```
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 
 ## Quick Launchers
 
-Launch Mole commands instantly from Raycast or Alfred:
+Launch Mole commands from Raycast or Alfred:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tw93/Mole/main/scripts/setup-quick-launchers.sh | bash
 ```
 
-<<<<<<< HEAD
-Adds 5 commands: `clean`, `uninstall`, `optimize`, `analyze`, `status`. Finds your terminal automatically or set `MO_LAUNCHER_APP=<name>` to override.
+Adds 5 commands: `Mole Clean`, `Mole Uninstall`, `Mole Optimize`, `Mole Analyze`, `Mole Status`.
 
-Reload Raycast by running `Reload Script Directories`, or simply restarting Raycast.
+### Raycast Setup
 
-## Support
+After running the script, complete these steps in Raycast:
 
-<a href="https://miaoyan.app/cats.html?name=Mole"><img src="https://miaoyan.app/assets/sponsors.svg" width="1000px" /></a>
+1. Open Raycast Settings (⌘ + ,)
+2. Go to **Extensions** → **Script Commands**
+3. Click **"Add Script Directory"** (or **"+"**)
+4. Add path: `~/Library/Application Support/Raycast/script-commands`
+5. Search in Raycast for: **"Reload Script Directories"** and run it
+6. Done! Search for `Mole Clean` or `clean`, `Mole Optimize`, or `Mole Status` to use the commands
 
-- If Mole freed storage for you, consider starring the repo or sharing it with friends needing a cleaner Mac.
-- Have ideas or fixes? Open an issue or PR and help shape Mole's future together with the community.
-- Love cats? Treat Tangyuan and Cola to canned food via <a href="https://miaoyan.app/cats.html?name=Mole" target="_blank">this link</a> and keep the mascots purring.
-=======
-Adds 5 commands: `clean`, `uninstall`, `optimize`, `analyze`, `status`.
+> **Note**: The script creates the commands, but Raycast still requires a one-time manual script directory setup.
 
-Mole automatically detects your terminal, or set `MO_LAUNCHER_APP=<name>` to override. For Raycast users: if this is your first script directory, add it via Raycast Extensions → Add Script Directory, then run "Reload Script Directories".
+### Terminal Detection
+
+Mole auto-detects your terminal app. iTerm2 has known compatibility issues. We highly recommend [Kaku](https://github.com/tw93/Kaku). Other good options are Alacritty, kitty, WezTerm, Ghostty, and Warp. To override, set `MO_LAUNCHER_APP=<name>`.
 
 ## Community Love
 
-Big thanks to all contributors who helped build Mole. Go follow them! ❤️
+Thanks to everyone who helped build Mole. Go follow them. ❤️
 
 <a href="https://github.com/tw93/Mole/graphs/contributors">
   <img src="./CONTRIBUTORS.svg?v=2" width="1000" />
@@ -347,17 +349,16 @@ Big thanks to all contributors who helped build Mole. Go follow them! ❤️
 <br/><br/>
 Real feedback from users who shared Mole on X.
 
-<img src="https://cdn.tw93.fun/pic/lovemole.jpeg" alt="Community feedback on Mole" width="1000" />
+<img src="https://gw.alipayobjects.com/zos/k/dl/lovemole.jpeg" alt="Community feedback on Mole" width="1000" />
 
 ## Support
 
-- If Mole helped you, star the repo or [share it](https://twitter.com/intent/tweet?url=https://github.com/tw93/Mole&text=Mole%20-%20Deep%20clean%20and%20optimize%20your%20Mac.) with friends.
-- Got ideas or found bugs? Check the [Contributing Guide](CONTRIBUTING.md) and open an issue or PR.
-- Like Mole? <a href="https://miaoyan.app/cats.html?name=Mole" target="_blank">Buy Tw93 a Coke</a> to support the project! 🥤 Supporters below.
+- If Mole helped you, [share it](https://twitter.com/intent/tweet?url=https://github.com/tw93/Mole&text=Mole%20-%20Deep%20clean%20and%20optimize%20your%20Mac.) with friends or give it a star.
+- Got ideas or bugs? Open an issue or PR, feel free to contribute your best AI model.
+- I have two cats, TangYuan and Coke. If you think Mole delights your life, you can feed them <a href="https://miaoyan.app/cats.html?name=Mole" target="_blank">canned food 🥩</a>.
 
-<a href="https://miaoyan.app/cats.html?name=Mole"><img src="https://miaoyan.app/assets/sponsors.svg" width="1000" loading="lazy" /></a>
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
+<a href="https://miaoyan.app/cats.html?name=Mole"><img src="https://cdn.jsdelivr.net/gh/tw93/MiaoYan@main/assets/sponsors.svg" width="1000" loading="lazy" /></a>
 
 ## License
 
-MIT License, feel free to enjoy and participate in open source.
+MIT License. Feel free to use Mole and contribute.

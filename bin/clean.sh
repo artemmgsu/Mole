@@ -9,16 +9,6 @@ export LC_ALL=C
 export LANG=C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-<<<<<<< HEAD
-source "$SCRIPT_DIR/../lib/common.sh"
-source "$SCRIPT_DIR/../lib/clean_brew.sh"
-source "$SCRIPT_DIR/../lib/clean_caches.sh"
-source "$SCRIPT_DIR/../lib/clean_apps.sh"
-source "$SCRIPT_DIR/../lib/clean_dev.sh"
-source "$SCRIPT_DIR/../lib/clean_user_apps.sh"
-source "$SCRIPT_DIR/../lib/clean_system.sh"
-source "$SCRIPT_DIR/../lib/clean_user_data.sh"
-=======
 source "$SCRIPT_DIR/../lib/core/common.sh"
 
 source "$SCRIPT_DIR/../lib/core/sudo.sh"
@@ -27,42 +17,43 @@ source "$SCRIPT_DIR/../lib/clean/caches.sh"
 source "$SCRIPT_DIR/../lib/clean/apps.sh"
 source "$SCRIPT_DIR/../lib/clean/dev.sh"
 source "$SCRIPT_DIR/../lib/clean/app_caches.sh"
+source "$SCRIPT_DIR/../lib/clean/hints.sh"
 source "$SCRIPT_DIR/../lib/clean/system.sh"
 source "$SCRIPT_DIR/../lib/clean/user.sh"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 
 SYSTEM_CLEAN=false
 DRY_RUN=false
 PROTECT_FINDER_METADATA=false
+EXTERNAL_VOLUME_TARGET=""
 IS_M_SERIES=$([[ "$(uname -m)" == "arm64" ]] && echo "true" || echo "false")
 
-<<<<<<< HEAD
-# Protected Service Worker domains (web-based editing tools)
-=======
 EXPORT_LIST_FILE="$HOME/.config/mole/clean-list.txt"
 CURRENT_SECTION=""
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 readonly PROTECTED_SW_DOMAINS=(
+    # Web editors
     "capcut.com"
     "photopea.com"
     "pixlr.com"
+    # Google Workspace (offline mode)
+    "docs.google.com"
+    "sheets.google.com"
+    "slides.google.com"
+    "drive.google.com"
+    "mail.google.com"
+    # Code platforms (offline/PWA)
+    "github.com"
+    "gitlab.com"
+    "codepen.io"
+    "codesandbox.io"
+    "replit.com"
+    "stackblitz.com"
+    # Collaboration tools (offline/PWA)
+    "notion.so"
+    "figma.com"
+    "linear.app"
+    "excalidraw.com"
 )
-<<<<<<< HEAD
-readonly FINDER_METADATA_SENTINEL="FINDER_METADATA"
-# Default whitelist patterns (preselected, user can disable)
-declare -a DEFAULT_WHITELIST_PATTERNS=(
-    "$HOME/Library/Caches/ms-playwright*"
-    "$HOME/.cache/huggingface*"
-    "$HOME/.m2/repository/*"
-    "$HOME/.ollama/models/*"
-    "$HOME/Library/Caches/com.nssurge.surge-mac/*"
-    "$HOME/Library/Application Support/com.nssurge.surge-mac/*"
-    "$HOME/Library/Caches/org.R-project.R/R/renv/*"
-    "$FINDER_METADATA_SENTINEL"
-)
-=======
 
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 declare -a WHITELIST_PATTERNS=()
 WHITELIST_WARNINGS=()
 if [[ -f "$HOME/.config/mole/whitelist" ]]; then
@@ -74,35 +65,6 @@ if [[ -f "$HOME/.config/mole/whitelist" ]]; then
         [[ -z "$line" || "$line" =~ ^# ]] && continue
 
         [[ "$line" == ~* ]] && line="${line/#~/$HOME}"
-<<<<<<< HEAD
-
-        # Security: reject path traversal attempts
-        if [[ "$line" =~ \.\. ]]; then
-            WHITELIST_WARNINGS+=("Path traversal not allowed: $line")
-            continue
-        fi
-
-        # Path validation with support for spaces and wildcards
-        # Allow: letters, numbers, /, _, ., -, @, spaces, and * anywhere in path
-        if [[ ! "$line" =~ ^[a-zA-Z0-9/_.@\ *-]+$ ]]; then
-            WHITELIST_WARNINGS+=("Invalid path format: $line")
-            continue
-        fi
-
-        # Require absolute paths (must start with /)
-        if [[ "$line" != /* ]]; then
-            WHITELIST_WARNINGS+=("Must be absolute path: $line")
-            continue
-        fi
-
-        # Reject paths with consecutive slashes (e.g., //)
-        if [[ "$line" =~ // ]]; then
-            WHITELIST_WARNINGS+=("Consecutive slashes: $line")
-            continue
-        fi
-
-        # Prevent critical system directories
-=======
         line="${line//\$HOME/$HOME}"
         line="${line//\$\{HOME\}/$HOME}"
         if [[ "$line" =~ \.\. ]]; then
@@ -111,7 +73,7 @@ if [[ -f "$HOME/.config/mole/whitelist" ]]; then
         fi
 
         if [[ "$line" != "$FINDER_METADATA_SENTINEL" ]]; then
-            if [[ ! "$line" =~ ^[a-zA-Z0-9/_.@\ *-]+$ ]]; then
+            if [[ "$line" =~ [[:cntrl:]] ]]; then
                 WHITELIST_WARNINGS+=("Invalid path format: $line")
                 continue
             fi
@@ -127,7 +89,6 @@ if [[ -f "$HOME/.config/mole/whitelist" ]]; then
             continue
         fi
 
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
         case "$line" in
             / | /System | /System/* | /bin | /bin/* | /sbin | /sbin/* | /usr/bin | /usr/bin/* | /usr/sbin | /usr/sbin/* | /etc | /etc/* | /var/db | /var/db/*)
                 WHITELIST_WARNINGS+=("Protected system path: $line")
@@ -150,19 +111,6 @@ if [[ -f "$HOME/.config/mole/whitelist" ]]; then
 else
     WHITELIST_PATTERNS=("${DEFAULT_WHITELIST_PATTERNS[@]}")
 fi
-<<<<<<< HEAD
-
-if [[ ${#WHITELIST_PATTERNS[@]} -gt 0 ]]; then
-    for entry in "${WHITELIST_PATTERNS[@]}"; do
-        if [[ "$entry" == "$FINDER_METADATA_SENTINEL" ]]; then
-            PROTECT_FINDER_METADATA=true
-            break
-        fi
-    done
-fi
-total_items=0
-=======
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 
 # Expand whitelist patterns once to avoid repeated tilde expansion in hot loops.
 expand_whitelist_patterns() {
@@ -194,12 +142,34 @@ SECTION_ACTIVITY=0
 files_cleaned=0
 total_size_cleaned=0
 whitelist_skipped_count=0
+PROJECT_ARTIFACT_HINT_DETECTED=false
+PROJECT_ARTIFACT_HINT_COUNT=0
+PROJECT_ARTIFACT_HINT_TRUNCATED=false
+PROJECT_ARTIFACT_HINT_EXAMPLES=()
+PROJECT_ARTIFACT_HINT_ESTIMATED_KB=0
+PROJECT_ARTIFACT_HINT_ESTIMATE_SAMPLES=0
+PROJECT_ARTIFACT_HINT_ESTIMATE_PARTIAL=false
+declare -a DRY_RUN_SEEN_IDENTITIES=()
 
 # shellcheck disable=SC2329
 note_activity() {
     if [[ "${TRACK_SECTION:-0}" == "1" ]]; then
         SECTION_ACTIVITY=1
     fi
+}
+
+# shellcheck disable=SC2329
+register_dry_run_cleanup_target() {
+    local path="$1"
+    local identity
+    identity=$(mole_path_identity "$path")
+
+    if [[ ${#DRY_RUN_SEEN_IDENTITIES[@]} -gt 0 ]] && mole_identity_in_list "$identity" "${DRY_RUN_SEEN_IDENTITIES[@]}"; then
+        return 1
+    fi
+
+    DRY_RUN_SEEN_IDENTITIES+=("$identity")
+    return 0
 }
 
 CLEANUP_DONE=false
@@ -241,13 +211,9 @@ start_section() {
 }
 
 end_section() {
-<<<<<<< HEAD
-    if [[ $TRACK_SECTION -eq 1 && $SECTION_ACTIVITY -eq 0 ]]; then
-=======
     stop_section_spinner
 
     if [[ "${TRACK_SECTION:-0}" == "1" && "${SECTION_ACTIVITY:-0}" == "0" ]]; then
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
         echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Nothing to clean"
     fi
     TRACK_SECTION=0
@@ -256,6 +222,35 @@ end_section() {
 # shellcheck disable=SC2329
 normalize_paths_for_cleanup() {
     local -a input_paths=("$@")
+
+    # Fast path for large batches: O(n log n) via sort|awk instead of O(n²) bash loops.
+    # Lex sort guarantees every parent path precedes its children, so a single-pass
+    # awk can filter child paths by tracking only the last kept path.
+    # Paths with embedded newlines cannot go through the newline-delimited pipeline;
+    # they are output directly with null-byte delimiters and skipped by the sort pass.
+    if [[ ${#input_paths[@]} -gt 50 ]]; then
+        local -a _fast_pipeline=()
+        local _fast_path
+        for _fast_path in "${input_paths[@]}"; do
+            if [[ "$_fast_path" == *$'\n'* ]]; then
+                printf '%s\0' "$_fast_path"
+            else
+                _fast_pipeline+=("$_fast_path")
+            fi
+        done
+        if [[ ${#_fast_pipeline[@]} -gt 0 ]]; then
+            printf '%s\n' "${_fast_pipeline[@]}" |
+                awk '{sub(/\/$/, ""); if ($0 != "") print}' |
+                LC_ALL=C sort -u |
+                awk 'BEGIN { last = "" } {
+                    if (last != "" && substr($0, 1, length(last) + 1) == last "/") next
+                    last = $0; print
+                }' |
+                while IFS= read -r _fast_path; do printf '%s\0' "$_fast_path"; done
+        fi
+        return
+    fi
+
     local -a unique_paths=()
 
     for path in "${input_paths[@]}"; do
@@ -273,9 +268,21 @@ normalize_paths_for_cleanup() {
         [[ "$found" == "true" ]] || unique_paths+=("$normalized")
     done
 
+    # Paths with embedded newlines cannot safely go through the newline-delimited
+    # sort pipeline. Collect them separately and append to result as-is.
+    local -a pipeline_paths=()
+    local -a passthrough_paths=()
+    for path in "${unique_paths[@]}"; do
+        if [[ "$path" == *$'\n'* ]]; then
+            passthrough_paths+=("$path")
+        else
+            pipeline_paths+=("$path")
+        fi
+    done
+
     local sorted_paths
-    if [[ ${#unique_paths[@]} -gt 0 ]]; then
-        sorted_paths=$(printf '%s\n' "${unique_paths[@]}" | awk '{print length "|" $0}' | LC_ALL=C sort -n | cut -d'|' -f2-)
+    if [[ ${#pipeline_paths[@]} -gt 0 ]]; then
+        sorted_paths=$(printf '%s\n' "${pipeline_paths[@]}" | awk '{print length "|" $0}' | LC_ALL=C sort -n | cut -d'|' -f2-)
     else
         sorted_paths=""
     fi
@@ -295,8 +302,13 @@ normalize_paths_for_cleanup() {
         [[ "$is_child" == "true" ]] || result_paths+=("$path")
     done <<< "$sorted_paths"
 
+    # Append passthrough paths (newline-containing; not deduplicated against others).
+    if [[ ${#passthrough_paths[@]} -gt 0 ]]; then
+        result_paths+=("${passthrough_paths[@]}")
+    fi
+
     if [[ ${#result_paths[@]} -gt 0 ]]; then
-        printf '%s\n' "${result_paths[@]}"
+        printf '%s\0' "${result_paths[@]}"
     fi
 }
 
@@ -435,32 +447,9 @@ safe_clean() {
     for path in "${targets[@]}"; do
         local skip=false
 
-<<<<<<< HEAD
-        # Hard-coded protection for critical apps (cannot be disabled by user)
-        case "$path" in
-            *clash* | *Clash* | *surge* | *Surge* | *mihomo* | *openvpn* | *OpenVPN*)
-                skip=true
-                ((skipped_count++))
-                ;;
-        esac
-
-        [[ "$skip" == "true" ]] && continue
-
-        # Check user-defined whitelist
-        if [[ ${#WHITELIST_PATTERNS[@]} -gt 0 ]]; then
-            for w in "${WHITELIST_PATTERNS[@]}"; do
-                # Match both exact path and glob pattern
-                # shellcheck disable=SC2053
-                if [[ "$path" == "$w" ]] || [[ $path == $w ]]; then
-                    skip=true
-                    ((skipped_count++))
-                    break
-                fi
-            done
-=======
         if should_protect_path "$path"; then
             skip=true
-            ((skipped_count++))
+            skipped_count=$((skipped_count + 1))
             log_operation "clean" "SKIPPED" "$path" "protected"
         fi
 
@@ -468,12 +457,16 @@ safe_clean() {
 
         if is_path_whitelisted "$path"; then
             skip=true
-            ((skipped_count++))
+            skipped_count=$((skipped_count + 1))
             log_operation "clean" "SKIPPED" "$path" "whitelist"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
         fi
         [[ "$skip" == "true" ]] && continue
-        [[ -e "$path" ]] && existing_paths+=("$path")
+        if [[ -e "$path" ]]; then
+            if [[ "$DRY_RUN" == "true" ]]; then
+                register_dry_run_cleanup_target "$path" || continue
+            fi
+            existing_paths+=("$path")
+        fi
     done
 
     if [[ "$show_scan_feedback" == "true" ]]; then
@@ -503,7 +496,7 @@ safe_clean() {
     fi
 
     if [[ $skipped_count -gt 0 ]]; then
-        ((whitelist_skipped_count += skipped_count))
+        whitelist_skipped_count=$((whitelist_skipped_count + skipped_count))
     fi
 
     if [[ ${#existing_paths[@]} -eq 0 ]]; then
@@ -512,7 +505,7 @@ safe_clean() {
 
     if [[ ${#existing_paths[@]} -gt 1 ]]; then
         local -a normalized_paths=()
-        while IFS= read -r path; do
+        while IFS= read -r -d '' path; do
             [[ -n "$path" ]] && normalized_paths+=("$path")
         done < <(normalize_paths_for_cleanup "${existing_paths[@]}")
 
@@ -561,24 +554,13 @@ safe_clean() {
                 size=$(get_cleanup_path_size_kb "$path")
                 [[ ! "$size" =~ ^[0-9]+$ ]] && size=0
 
-<<<<<<< HEAD
-            if ((${#pids[@]} >= MOLE_MAX_PARALLEL_JOBS)); then
-                wait "${pids[0]}" 2> /dev/null || true
-                pids=("${pids[@]:1}")
-                ((completed++))
-                # Update progress every 10 items for smoother display
-                if [[ -t 1 ]] && ((completed % 10 == 0)); then
-                    stop_inline_spinner
-                    MOLE_SPINNER_PREFIX="  " start_inline_spinner "Scanning items ($completed/$total_paths)..."
-=======
                 if [[ "$size" -gt 0 ]]; then
                     echo "$size 1" > "$temp_dir/result_${idx}"
                 else
                     echo "0 0" > "$temp_dir/result_${idx}"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
                 fi
 
-                ((idx++))
+                idx=$((idx + 1))
                 if [[ $((idx % 20)) -eq 0 && "$show_spinner" == "true" && -t 1 ]]; then
                     update_progress_if_needed "$idx" "${#existing_paths[@]}" last_progress_update 1 || true
                     last_progress_update=$(get_epoch_seconds)
@@ -592,21 +574,6 @@ safe_clean() {
             last_progress_update=$(get_epoch_seconds)
             local total_paths=${#existing_paths[@]}
 
-<<<<<<< HEAD
-        # Read results using same index
-        idx=0
-        for path in "${existing_paths[@]}"; do
-            local result_file="$temp_dir/result_${idx}"
-            if [[ -f "$result_file" ]]; then
-                read -r size count < "$result_file" 2> /dev/null || true
-                if [[ "$count" -gt 0 && "$size" -gt 0 ]]; then
-                    if [[ "$DRY_RUN" != "true" ]]; then
-                        # Handle symbolic links separately (only remove the link, not the target)
-                        if [[ -L "$path" ]]; then
-                            rm "$path" 2> /dev/null || true
-                        else
-                            safe_remove "$path" true || true
-=======
             if [[ ${#existing_paths[@]} -gt 0 ]]; then
                 for path in "${existing_paths[@]}"; do
                     (
@@ -622,16 +589,15 @@ safe_clean() {
                         mv "$tmp_file" "$temp_dir/result_${idx}" 2> /dev/null || true
                     ) &
                     pids+=($!)
-                    ((idx++))
+                    idx=$((idx + 1))
 
                     if ((${#pids[@]} >= MOLE_MAX_PARALLEL_JOBS)); then
                         wait "${pids[0]}" 2> /dev/null || true
                         pids=("${pids[@]:1}")
-                        ((completed++))
+                        completed=$((completed + 1))
 
                         if [[ "$show_spinner" == "true" && -t 1 ]]; then
                             update_progress_if_needed "$completed" "$total_paths" last_progress_update 2 || true
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
                         fi
                     fi
                 done
@@ -640,7 +606,7 @@ safe_clean() {
             if [[ ${#pids[@]} -gt 0 ]]; then
                 for pid in "${pids[@]}"; do
                     wait "$pid" 2> /dev/null || true
-                    ((completed++))
+                    completed=$((completed + 1))
 
                     if [[ "$show_spinner" == "true" && -t 1 ]]; then
                         update_progress_if_needed "$completed" "$total_paths" last_progress_update 2 || true
@@ -672,17 +638,17 @@ safe_clean() {
 
                     if [[ $removed -eq 1 ]]; then
                         if [[ "$size" -gt 0 ]]; then
-                            ((total_size_kb += size))
+                            total_size_kb=$((total_size_kb + size))
                         fi
-                        ((total_count += 1))
+                        total_count=$((total_count + 1))
                         removed_any=1
                     else
                         if [[ -e "$path" && "$DRY_RUN" != "true" ]]; then
-                            ((removal_failed_count++))
+                            removal_failed_count=$((removal_failed_count + 1))
                         fi
                     fi
                 fi
-                ((idx++))
+                idx=$((idx + 1))
             done
         fi
 
@@ -701,34 +667,25 @@ safe_clean() {
 
                 local removed=0
                 if [[ "$DRY_RUN" != "true" ]]; then
-<<<<<<< HEAD
-                    # Handle symbolic links separately (only remove the link, not the target)
-                    if [[ -L "$path" ]]; then
-                        rm "$path" 2> /dev/null || true
-                    else
-                        safe_remove "$path" true || true
-                    fi
-=======
                     if safe_remove "$path" true; then
                         removed=1
                     fi
                 else
                     removed=1
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
                 fi
 
                 if [[ $removed -eq 1 ]]; then
                     if [[ "$size_kb" -gt 0 ]]; then
-                        ((total_size_kb += size_kb))
+                        total_size_kb=$((total_size_kb + size_kb))
                     fi
-                    ((total_count += 1))
+                    total_count=$((total_count + 1))
                     removed_any=1
                 else
                     if [[ -e "$path" && "$DRY_RUN" != "true" ]]; then
-                        ((removal_failed_count++))
+                        removal_failed_count=$((removal_failed_count + 1))
                     fi
                 fi
-                ((idx++))
+                idx=$((idx + 1))
             done
         fi
     fi
@@ -750,7 +707,8 @@ safe_clean() {
         # Stop spinner before output
         stop_section_spinner
 
-        local size_human=$(bytes_to_human "$((total_size_kb * 1024))")
+        local size_human
+        size_human=$(bytes_to_human "$((total_size_kb * 1024))")
 
         local label="$description"
         if [[ ${#targets[@]} -gt 1 ]]; then
@@ -760,7 +718,8 @@ safe_clean() {
         if [[ "$DRY_RUN" == "true" ]]; then
             echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} $label${NC}, ${YELLOW}$size_human dry${NC}"
 
-            local paths_temp=$(create_temp_file)
+            local paths_temp
+            paths_temp=$(create_temp_file)
 
             idx=0
             if [[ ${#existing_paths[@]} -gt 0 ]]; then
@@ -774,12 +733,12 @@ safe_clean() {
                     fi
 
                     [[ "$size" == "0" || -z "$size" ]] && {
-                        ((idx++))
+                        idx=$((idx + 1))
                         continue
                     }
 
                     echo "$(dirname "$path")|$size|$path" >> "$paths_temp"
-                    ((idx++))
+                    idx=$((idx + 1))
                 done
             fi
 
@@ -807,22 +766,23 @@ safe_clean() {
                     }
                 }
                 ' | while IFS='|' read -r display_path total_size child_count; do
-                    local size_human=$(bytes_to_human "$((total_size * 1024))")
+                    local size_human
+                    size_human=$(bytes_to_human "$((total_size * 1024))")
                     if [[ $child_count -gt 1 ]]; then
                         echo "$display_path  # $size_human, $child_count items" >> "$EXPORT_LIST_FILE"
                     else
                         echo "$display_path  # $size_human" >> "$EXPORT_LIST_FILE"
                     fi
                 done
-
-                rm -f "$paths_temp"
             fi
         else
-            echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $label${NC}, ${GREEN}$size_human${NC}"
+            local line_color
+            line_color=$(cleanup_result_color_kb "$total_size_kb")
+            echo -e "  ${line_color}${ICON_SUCCESS}${NC} $label${NC}, ${line_color}$size_human${NC}"
         fi
-        ((files_cleaned += total_count))
-        ((total_size_cleaned += total_size_kb))
-        ((total_items++))
+        files_cleaned=$((files_cleaned + total_count))
+        total_size_cleaned=$((total_size_cleaned + total_size_kb))
+        total_items=$((total_items + 1))
         note_activity
     fi
 
@@ -833,22 +793,25 @@ start_cleanup() {
     # Set current command for operation logging
     export MOLE_CURRENT_COMMAND="clean"
     log_operation_session_start "clean"
+    DRY_RUN_SEEN_IDENTITIES=()
 
     if [[ -t 1 ]]; then
         printf '\033[2J\033[H'
     fi
     printf '\n'
-<<<<<<< HEAD
-    echo -e "${PURPLE}Clean Your Mac${NC}"
-    echo ""
+    if [[ -n "$EXTERNAL_VOLUME_TARGET" ]]; then
+        echo -e "${PURPLE_BOLD}Clean External Volume${NC}"
+        echo -e "${GRAY}${EXTERNAL_VOLUME_TARGET}${NC}"
+        echo ""
 
-    if [[ "$DRY_RUN" != "true" && -t 0 ]]; then
-        echo -e "${YELLOW}☻${NC} First time? Run ${GRAY}mo clean --dry-run${NC} first to preview changes"
+        if [[ "$DRY_RUN" == "true" ]]; then
+            echo -e "${YELLOW}Dry Run Mode${NC}, Preview only, no deletions"
+            echo ""
+        fi
+        SYSTEM_CLEAN=false
+        return 0
     fi
 
-    if [[ "$DRY_RUN" == "true" ]]; then
-        echo -e "${YELLOW}Dry Run Mode${NC} - Preview only, no deletions"
-=======
     echo -e "${PURPLE_BOLD}Clean Your Mac${NC}"
     echo ""
 
@@ -858,9 +821,7 @@ start_cleanup() {
 
     if [[ "$DRY_RUN" == "true" ]]; then
         echo -e "${YELLOW}Dry Run Mode${NC}, Preview only, no deletions"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
         echo ""
-        SYSTEM_CLEAN=false
 
         ensure_user_file "$EXPORT_LIST_FILE"
         cat > "$EXPORT_LIST_FILE" << EOF
@@ -875,65 +836,22 @@ start_cleanup() {
 #
 
 EOF
+
+        # Preview system section when sudo is already cached (no password prompt).
+        if has_sudo_session; then
+            SYSTEM_CLEAN=true
+            echo -e "${GREEN}${ICON_SUCCESS}${NC} Admin access available, system preview included"
+            echo ""
+        else
+            SYSTEM_CLEAN=false
+            echo -e "${GRAY}${ICON_WARNING} System caches need sudo, run ${NC}sudo -v && mo clean --dry-run${GRAY} for full preview${NC}"
+            echo ""
+        fi
         return
     fi
 
     if [[ -t 0 ]]; then
-<<<<<<< HEAD
-        echo -ne "${PURPLE}${ICON_ARROW}${NC} System caches need sudo — ${GREEN}Enter${NC} continue, ${GRAY}Space${NC} skip: "
-
-        # Use read_key to properly handle all key inputs
-        local choice
-        choice=$(read_key)
-
-        # Check for cancel (ESC or Q)
-        if [[ "$choice" == "QUIT" ]]; then
-            echo -e " ${GRAY}Cancelled${NC}"
-            exit 0
-        fi
-
-        # Space = skip
-        if [[ "$choice" == "SPACE" ]]; then
-            echo -e " ${GRAY}Skipped${NC}"
-            echo ""
-            SYSTEM_CLEAN=false
-        # Enter = yes, do system cleanup
-        elif [[ "$choice" == "ENTER" ]]; then
-            printf "\r\033[K" # Clear the prompt line
-            if request_sudo_access "System cleanup requires admin access"; then
-                SYSTEM_CLEAN=true
-                echo -e "${GREEN}${ICON_SUCCESS}${NC} Admin access granted"
-                echo ""
-                # Start sudo keepalive with robust parent checking
-                # Store parent PID to ensure keepalive exits if parent dies
-                parent_pid=$$
-                (
-                    # Initial delay to let sudo cache stabilize after password entry
-                    # This prevents immediately triggering Touch ID again
-                    sleep 2
-
-                    local retry_count=0
-                    while true; do
-                        # Check if parent process still exists first
-                        if ! kill -0 "$parent_pid" 2> /dev/null; then
-                            exit 0
-                        fi
-
-                        if ! sudo -n true 2> /dev/null; then
-                            ((retry_count++))
-                            if [[ $retry_count -ge 3 ]]; then
-                                exit 1
-                            fi
-                            sleep 5
-                            continue
-                        fi
-                        retry_count=0
-                        sleep 30
-                    done
-                ) 2> /dev/null &
-                SUDO_KEEPALIVE_PID=$!
-=======
-        if sudo -n true 2> /dev/null; then
+        if has_sudo_session; then
             SYSTEM_CLEAN=true
             echo -e "${GREEN}${ICON_SUCCESS}${NC} Admin access already available"
             echo ""
@@ -964,46 +882,16 @@ EOF
                     echo ""
                     echo -e "${YELLOW}Authentication failed${NC}, continuing with user-level cleanup"
                 fi
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
             else
                 SYSTEM_CLEAN=false
                 echo -e " ${GRAY}Skipped${NC}"
                 echo ""
             fi
-<<<<<<< HEAD
-        else
-            # Other keys (including arrow keys) = skip, no message needed
-            SYSTEM_CLEAN=false
-=======
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
         fi
     else
         echo ""
         echo "Running in non-interactive mode"
-<<<<<<< HEAD
-        echo "  • System-level cleanup skipped (requires interaction)"
-        echo "  • User-level cleanup will proceed automatically"
-        echo ""
-    fi
-}
-
-# Clean Service Worker CacheStorage with domain protection
-
-perform_cleanup() {
-    echo -e "${BLUE}${ICON_ADMIN}${NC} $(detect_architecture) | Free space: $(get_free_space)"
-
-    # Pre-check TCC permissions upfront (delegated to clean_caches module)
-    check_tcc_permissions
-
-    # Show whitelist info if patterns are active
-    local active_count=${#WHITELIST_PATTERNS[@]}
-    if [[ $active_count -gt 2 ]]; then
-        local custom_count=$((active_count - 2))
-        echo -e "${BLUE}${ICON_SUCCESS}${NC} Whitelist: $custom_count custom + 2 core patterns active"
-    elif [[ $active_count -eq 2 ]]; then
-        echo -e "${BLUE}${ICON_SUCCESS}${NC} Whitelist: 2 core patterns active"
-=======
-        if sudo -n true 2> /dev/null; then
+        if has_sudo_session; then
             SYSTEM_CLEAN=true
             echo "  ${ICON_LIST} System-level cleanup enabled, sudo session active"
         else
@@ -1016,9 +904,15 @@ perform_cleanup() {
 }
 
 perform_cleanup() {
+    if [[ -n "$EXTERNAL_VOLUME_TARGET" ]]; then
+        total_items=0
+        files_cleaned=0
+        total_size_cleaned=0
+    fi
+
     # Test mode skips expensive scans and returns minimal output.
     local test_mode_enabled=false
-    if [[ "${MOLE_TEST_MODE:-0}" == "1" ]]; then
+    if [[ -z "$EXTERNAL_VOLUME_TARGET" && "${MOLE_TEST_MODE:-0}" == "1" ]]; then
         test_mode_enabled=true
         if [[ "$DRY_RUN" == "true" ]]; then
             echo -e "${YELLOW}Dry Run Mode${NC}, Preview only, no deletions"
@@ -1052,7 +946,7 @@ perform_cleanup() {
         total_size_cleaned=0
     fi
 
-    if [[ "$test_mode_enabled" == "false" ]]; then
+    if [[ "$test_mode_enabled" == "false" && -z "$EXTERNAL_VOLUME_TARGET" ]]; then
         echo -e "${BLUE}${ICON_ADMIN}${NC} $(detect_architecture) | Free space: $(get_free_space)"
     fi
 
@@ -1067,7 +961,9 @@ perform_cleanup() {
     fi
 
     # Pre-check TCC permissions to avoid mid-run prompts.
-    check_tcc_permissions
+    if [[ -z "$EXTERNAL_VOLUME_TARGET" ]]; then
+        check_tcc_permissions
+    fi
 
     if [[ ${#WHITELIST_PATTERNS[@]} -gt 0 ]]; then
         local predefined_count=0
@@ -1084,9 +980,9 @@ perform_cleanup() {
             done
 
             if [[ "$is_predefined" == "true" ]]; then
-                ((predefined_count++))
+                predefined_count=$((predefined_count + 1))
             else
-                ((custom_count++))
+                custom_count=$((custom_count + 1))
             fi
         done
 
@@ -1102,7 +998,7 @@ perform_cleanup() {
             if [[ "$DRY_RUN" == "true" ]]; then
                 for pattern in "${WHITELIST_PATTERNS[@]}"; do
                     [[ "$pattern" == "$FINDER_METADATA_SENTINEL" ]] && continue
-                    echo -e "  ${GRAY}→ $pattern${NC}"
+                    echo -e "  ${GRAY}${ICON_SUBLIST}${NC} ${GRAY}${pattern}${NC}"
                 done
             fi
         fi
@@ -1114,9 +1010,8 @@ perform_cleanup() {
         fda_status=$?
         if [[ $fda_status -eq 1 ]]; then
             echo ""
-            echo -e "${GRAY}${ICON_WARNING}${NC} ${GRAY}Tip: Grant Full Disk Access to your terminal in System Settings for best results${NC}"
+            echo -e "${GRAY}${ICON_REVIEW}${NC} ${GRAY}Grant Full Disk Access to your terminal in System Settings for best results${NC}"
         fi
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
     fi
 
     total_items=0
@@ -1129,368 +1024,104 @@ perform_cleanup() {
     # Allow per-section failures without aborting the full run.
     set +e
 
-    # ===== 1. Deep system cleanup (if admin) =====
-    if [[ "$SYSTEM_CLEAN" == "true" ]]; then
-        start_section "Deep system"
-<<<<<<< HEAD
-        # Deep system cleanup (delegated to clean_system module)
-        clean_deep_system
-=======
-        clean_deep_system
-        clean_local_snapshots
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
+    if [[ -n "$EXTERNAL_VOLUME_TARGET" ]]; then
+        start_section "External volume"
+        clean_external_volume_target "$EXTERNAL_VOLUME_TARGET"
         end_section
-    fi
-
-    if [[ ${#WHITELIST_WARNINGS[@]} -gt 0 ]]; then
-        echo ""
-        for warning in "${WHITELIST_WARNINGS[@]}"; do
-            echo -e "  ${GRAY}${ICON_WARNING}${NC} Whitelist: $warning"
-        done
-    fi
-
-<<<<<<< HEAD
-    # ===== 2. User essentials =====
-    start_section "User essentials"
-    # User essentials cleanup (delegated to clean_user_data module)
-    clean_user_essentials
-    end_section
-
-    start_section "Finder metadata"
-    # Finder metadata cleanup (delegated to clean_user_data module)
-=======
-    start_section "User essentials"
-    clean_user_essentials
-    scan_external_volumes
-    end_section
-
-    start_section "Finder metadata"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
-    clean_finder_metadata
-    end_section
-
-    # ===== 3. macOS system caches =====
-    start_section "macOS system caches"
-<<<<<<< HEAD
-    # macOS system caches cleanup (delegated to clean_user_data module)
-    clean_macos_system_caches
-=======
-    clean_macos_system_caches
-    clean_recent_items
-    clean_mail_downloads
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
-    end_section
-
-    # ===== 4. Sandboxed app caches =====
-    start_section "Sandboxed app caches"
-<<<<<<< HEAD
-    # Sandboxed app caches cleanup (delegated to clean_user_data module)
-=======
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
-    clean_sandboxed_app_caches
-    end_section
-
-    # ===== 5. Browsers =====
-    start_section "Browsers"
-<<<<<<< HEAD
-    # Browser caches cleanup (delegated to clean_user_data module)
-=======
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
-    clean_browsers
-    end_section
-
-    # ===== 6. Cloud storage =====
-    start_section "Cloud storage"
-<<<<<<< HEAD
-    # Cloud storage caches cleanup (delegated to clean_user_data module)
-=======
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
-    clean_cloud_storage
-    end_section
-
-    # ===== 7. Office applications =====
-    start_section "Office applications"
-<<<<<<< HEAD
-    # Office applications cleanup (delegated to clean_user_data module)
-=======
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
-    clean_office_applications
-    end_section
-
-    # ===== 8. Developer tools =====
-    start_section "Developer tools"
-<<<<<<< HEAD
-    # Developer tools cleanup (delegated to clean_dev module)
-=======
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
-    clean_developer_tools
-    end_section
-
-    # ===== 9. Development applications =====
-    start_section "Development applications"
-<<<<<<< HEAD
-    # User GUI applications cleanup (delegated to clean_user_apps module)
-=======
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
-    clean_user_gui_applications
-    end_section
-
-    # ===== 10. Virtualization tools =====
-    start_section "Virtual machine tools"
-<<<<<<< HEAD
-    # Virtualization tools cleanup (delegated to clean_user_data module)
-=======
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
-    clean_virtualization_tools
-    end_section
-
-    # ===== 11. Application Support logs and caches cleanup =====
-    start_section "Application Support"
-<<<<<<< HEAD
-    # Clean logs, Service Worker caches, Code Cache, Crashpad, stale updates, Group Containers
-    clean_application_support_logs
-    end_section
-
-    # ===== 12. Orphaned app data cleanup =====
-    # Only touch apps missing from scan + 60+ days inactive
-    # Skip protected vendors, keep Preferences/Application Support
-    start_section "Uninstalled app data"
-
-    # Check if we have permission to access Library folders
-    # Use simple ls test instead of find to avoid hanging
-    local has_library_access=true
-    if ! ls "$HOME/Library/Caches" > /dev/null 2>&1; then
-        has_library_access=false
-    fi
-
-    if [[ "$has_library_access" == "false" ]]; then
-        note_activity
-        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Skipped: No permission to access Library folders"
-        echo -e "  ${GRAY}Tip: Grant 'Full Disk Access' to iTerm2/Terminal in System Settings${NC}"
     else
-
-        local -r ORPHAN_AGE_THRESHOLD=60 # 60 days - good balance between safety and cleanup
-
-        # Build list of installed application bundle identifiers
-        MOLE_SPINNER_PREFIX="  " start_inline_spinner "Scanning installed applications..."
-        local installed_bundles=$(create_temp_file)
-
-        # Simplified: only scan primary locations (reduces scan time by ~70%)
-        local -a search_paths=(
-            "/Applications"
-            "$HOME/Applications"
-        )
-
-        # Scan for .app bundles with timeout protection
-        for search_path in "${search_paths[@]}"; do
-            [[ -d "$search_path" ]] || continue
-            while IFS= read -r app; do
-                [[ -f "$app/Contents/Info.plist" ]] || continue
-                bundle_id=$(defaults read "$app/Contents/Info.plist" CFBundleIdentifier 2> /dev/null || echo "")
-                [[ -n "$bundle_id" ]] && echo "$bundle_id" >> "$installed_bundles"
-            done < <(run_with_timeout 10 find "$search_path" -maxdepth 2 -type d -name "*.app" 2> /dev/null || true)
-        done
-
-        # Get running applications and LaunchAgents with timeout protection
-        local running_apps=$(run_with_timeout 5 osascript -e 'tell application "System Events" to get bundle identifier of every application process' 2> /dev/null || echo "")
-        echo "$running_apps" | tr ',' '\n' | sed -e 's/^ *//;s/ *$//' -e '/^$/d' >> "$installed_bundles"
-
-        run_with_timeout 5 find ~/Library/LaunchAgents /Library/LaunchAgents \
-            -name "*.plist" -type f 2> /dev/null | while IFS= read -r plist; do
-            basename "$plist" .plist
-        done >> "$installed_bundles" 2> /dev/null || true
-
-        # Deduplicate
-        sort -u "$installed_bundles" -o "$installed_bundles"
-
-        local app_count=$(wc -l < "$installed_bundles" 2> /dev/null | tr -d ' ')
-        stop_inline_spinner
-        echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Found $app_count active/installed apps"
-
-        # Track statistics
-        local orphaned_count=0
-        local total_orphaned_kb=0
-
-        # Check if bundle is orphaned - conservative approach
-        is_orphaned() {
-            local bundle_id="$1"
-            local directory_path="$2"
-
-            # Skip system-critical and protected apps
-            if should_protect_data "$bundle_id"; then
-                return 1
-            fi
-
-            # Check if app exists in our scan
-            if grep -q "^$bundle_id$" "$installed_bundles" 2> /dev/null; then
-                return 1
-            fi
-
-            # Extra check for system bundles
-            case "$bundle_id" in
-                com.apple.* | loginwindow | dock | systempreferences | finder | safari)
-                    return 1
-                    ;;
-            esac
-
-            # Skip major vendors
-            case "$bundle_id" in
-                com.adobe.* | com.microsoft.* | com.google.* | org.mozilla.* | com.jetbrains.* | com.docker.*)
-                    return 1
-                    ;;
-            esac
-
-            # Check file age - only clean if 60+ days inactive
-            # Use modification time (mtime) instead of access time (atime)
-            # because macOS disables atime updates by default for performance
-            if [[ -e "$directory_path" ]]; then
-                local last_modified_epoch=$(get_file_mtime "$directory_path")
-                local current_epoch=$(date +%s)
-                local days_since_modified=$(((current_epoch - last_modified_epoch) / 86400))
-
-                if [[ $days_since_modified -lt $ORPHAN_AGE_THRESHOLD ]]; then
-                    return 1
-                fi
-            fi
-
-            return 0
-        }
-
-        # Unified orphaned resource scanner (caches, logs, states, webkit, HTTP, cookies)
-        MOLE_SPINNER_PREFIX="  " start_inline_spinner "Scanning orphaned app resources..."
-
-        # Define resource types to scan
-        # CRITICAL: NEVER add LaunchAgents or LaunchDaemons (breaks login items/startup apps)
-        local -a resource_types=(
-            "$HOME/Library/Caches|Caches|com.*:org.*:net.*:io.*"
-            "$HOME/Library/Logs|Logs|com.*:org.*:net.*:io.*"
-            "$HOME/Library/Saved Application State|States|*.savedState"
-            "$HOME/Library/WebKit|WebKit|com.*:org.*:net.*:io.*"
-            "$HOME/Library/HTTPStorages|HTTP|com.*:org.*:net.*:io.*"
-            "$HOME/Library/Cookies|Cookies|*.binarycookies"
-        )
-
-        orphaned_count=0
-
-        for resource_type in "${resource_types[@]}"; do
-            IFS='|' read -r base_path label patterns <<< "$resource_type"
-
-            # Check both existence and permission to avoid hanging
-            if [[ ! -d "$base_path" ]]; then
-                continue
-            fi
-
-            # Quick permission check - if we can't ls the directory, skip it
-            if ! ls "$base_path" > /dev/null 2>&1; then
-                continue
-            fi
-
-            # Build file pattern array
-            local -a file_patterns=()
-            IFS=':' read -ra pattern_arr <<< "$patterns"
-            for pat in "${pattern_arr[@]}"; do
-                file_patterns+=("$base_path/$pat")
-            done
-
-            # Scan and clean orphaned items
-            for item_path in "${file_patterns[@]}"; do
-                # Use shell glob (no ls needed)
-                # Limit iterations to prevent hanging on directories with too many files
-                local iteration_count=0
-                local max_iterations=100
-
-                for match in $item_path; do
-                    [[ -e "$match" ]] || continue
-
-                    # Safety: limit iterations to prevent infinite loops on massive directories
-                    ((iteration_count++))
-                    if [[ $iteration_count -gt $max_iterations ]]; then
-                        break
-                    fi
-
-                    # Extract bundle ID from filename
-                    local bundle_id=$(basename "$match")
-                    bundle_id="${bundle_id%.savedState}"
-                    bundle_id="${bundle_id%.binarycookies}"
-
-                    if is_orphaned "$bundle_id" "$match"; then
-                        # Use timeout to prevent du from hanging on large/problematic directories
-                        local size_kb
-                        size_kb=$(run_with_timeout 2 du -sk "$match" 2> /dev/null | awk '{print $1}' || echo "0")
-                        if [[ -z "$size_kb" || "$size_kb" == "0" ]]; then
-                            continue
-                        fi
-                        safe_clean "$match" "Orphaned $label: $bundle_id"
-                        ((orphaned_count++))
-                        ((total_orphaned_kb += size_kb))
-                    fi
-                done
-            done
-        done
-
-        stop_inline_spinner
-
-        if [[ $orphaned_count -gt 0 ]]; then
-            local orphaned_mb=$(echo "$total_orphaned_kb" | awk '{printf "%.1f", $1/1024}')
-            echo "  ${GREEN}${ICON_SUCCESS}${NC} Cleaned $orphaned_count items (~${orphaned_mb}MB)"
-            note_activity
+        # ===== 1. System =====
+        if [[ "$SYSTEM_CLEAN" == "true" ]]; then
+            start_section "System"
+            clean_deep_system
+            clean_local_snapshots
+            end_section
         fi
 
-        rm -f "$installed_bundles"
+        if [[ ${#WHITELIST_WARNINGS[@]} -gt 0 ]]; then
+            echo ""
+            for warning in "${WHITELIST_WARNINGS[@]}"; do
+                echo -e "  ${GRAY}${ICON_WARNING}${NC} Whitelist: $warning"
+            done
+        fi
 
-    fi # end of has_library_access check
+        # ===== 2. User essentials =====
+        start_section "User essentials"
+        clean_user_essentials
+        clean_finder_metadata
+        end_section
 
-    end_section
+        # ===== 3. App caches (merged sandboxed and standard app caches) =====
+        start_section "App caches"
+        clean_app_caches
+        end_section
 
-    # ===== 13. Apple Silicon optimizations =====
-    if [[ "$IS_M_SERIES" == "true" ]]; then
-        start_section "Apple Silicon updates"
-        safe_clean /Library/Apple/usr/share/rosetta/rosetta_update_bundle "Rosetta 2 cache"
-        safe_clean ~/Library/Caches/com.apple.rosetta.update "Rosetta 2 user cache"
-        safe_clean ~/Library/Caches/com.apple.amp.mediasevicesd "Apple Silicon media service cache"
-        # Skip: iCloud sync cache, may affect device pairing
-        # safe_clean ~/Library/Caches/com.apple.bird.lsuseractivity "User activity cache"
+        # ===== 4. Browsers =====
+        start_section "Browsers"
+        clean_browsers
+        end_section
+
+        # ===== 5. Cloud & Office =====
+        start_section "Cloud & Office"
+        clean_cloud_storage
+        clean_office_applications
+        end_section
+
+        # ===== 6. Developer tools (merged CLI and GUI tooling) =====
+        start_section "Developer tools"
+        clean_developer_tools
+        end_section
+
+        # ===== 7. Applications =====
+        start_section "Applications"
+        clean_user_gui_applications
+        end_section
+
+        # ===== 8. Virtualization =====
+        start_section "Virtualization"
+        clean_virtualization_tools
+        end_section
+
+        # ===== 9. Application Support =====
+        start_section "Application Support"
+        clean_application_support_logs
+        end_section
+
+        # ===== 10. App leftovers =====
+        start_section "App leftovers"
+        clean_orphaned_app_data
+        clean_orphaned_system_services
+        show_user_launch_agent_hint_notice
+        end_section
+
+        # ===== 11. Apple Silicon =====
+        clean_apple_silicon_caches
+
+        # ===== 12. Device backups & firmware =====
+        start_section "Device backups & firmware"
+        clean_cached_device_firmware
+        check_ios_device_backups
+        end_section
+
+        # ===== 13. Time Machine =====
+        start_section "Time Machine"
+        clean_time_machine_failed_backups
+        end_section
+
+        # ===== 14. Large files =====
+        start_section "Large files"
+        check_large_file_candidates
+        end_section
+
+        # ===== 15. System Data clues =====
+        start_section "System Data clues"
+        show_system_data_hint_notice
+        end_section
+
+        # ===== 16. Project artifacts =====
+        start_section "Project artifacts"
+        show_project_artifact_hint_notice
         end_section
     fi
-
-    # ===== 14. iOS device backups =====
-    start_section "iOS device backups"
-    # iOS device backups check (delegated to clean_user_data module)
-    check_ios_device_backups
-    end_section
-
-    # ===== 15. Time Machine failed backups =====
-    start_section "Time Machine failed backups"
-    # Time Machine failed backups cleanup (delegated to clean_system module)
-    clean_time_machine_failed_backups
-=======
-    clean_application_support_logs
-    end_section
-
-    # ===== 12. Orphaned app data cleanup (60+ days inactive, skip protected vendors) =====
-    start_section "Uninstalled app data"
-    clean_orphaned_app_data
-    clean_orphaned_system_services
-    end_section
-
-    # ===== 13. Apple Silicon optimizations =====
-    clean_apple_silicon_caches
-
-    # ===== 14. iOS device backups =====
-    start_section "iOS device backups"
-    check_ios_device_backups
-    end_section
-
-    # ===== 15. Time Machine incomplete backups =====
-    start_section "Time Machine incomplete backups"
-    clean_time_machine_failed_backups
-    end_section
-
-    # ===== 16. Large files to review (report only) =====
-    start_section "Large files to review"
-    check_large_file_candidates
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
-    end_section
 
     # ===== Final summary =====
     echo ""
@@ -1506,11 +1137,11 @@ perform_cleanup() {
     local -a summary_details=()
 
     if [[ $total_size_cleaned -gt 0 ]]; then
-        local freed_gb
-        freed_gb=$(echo "$total_size_cleaned" | awk '{printf "%.2f", $1/1024/1024}')
+        local freed_size_human
+        freed_size_human=$(bytes_to_human_kb "$total_size_cleaned")
 
         if [[ "$DRY_RUN" == "true" ]]; then
-            local stats="Potential space: ${GREEN}${freed_gb}GB${NC}"
+            local stats="Potential space: ${GREEN}${freed_size_human}${NC}"
             [[ $files_cleaned -gt 0 ]] && stats+=" | Items: $files_cleaned"
             [[ $total_items -gt 0 ]] && stats+=" | Categories: $total_items"
             summary_details+=("$stats")
@@ -1520,7 +1151,7 @@ perform_cleanup() {
                 echo "# ============================================"
                 echo "# Summary"
                 echo "# ============================================"
-                echo "# Potential cleanup: ${freed_gb}GB"
+                echo "# Potential cleanup: ${freed_size_human}"
                 echo "# Items: $files_cleaned"
                 echo "# Categories: $total_items"
             } >> "$EXPORT_LIST_FILE"
@@ -1528,7 +1159,7 @@ perform_cleanup() {
             summary_details+=("Detailed file list: ${GRAY}$EXPORT_LIST_FILE${NC}")
             summary_details+=("Use ${GRAY}mo clean --whitelist${NC} to add protection rules")
         else
-            local summary_line="Space freed: ${GREEN}${freed_gb}GB${NC}"
+            local summary_line="Space freed: ${GREEN}${freed_size_human}${NC}"
 
             if [[ $files_cleaned -gt 0 && $total_items -gt 0 ]]; then
                 summary_line+=" | Items cleaned: $files_cleaned | Categories: $total_items"
@@ -1540,9 +1171,11 @@ perform_cleanup() {
 
             summary_details+=("$summary_line")
 
-            if [[ $(echo "$freed_gb" | awk '{print ($1 >= 1) ? 1 : 0}') -eq 1 ]]; then
-                local movies
-                movies=$(echo "$freed_gb" | awk '{printf "%.0f", $1/4.5}')
+            # Movie comparison only if >= 1GB
+            if ((total_size_cleaned >= MOLE_ONE_GIB_KB)); then
+                local freed_gb=$((total_size_cleaned / MOLE_ONE_GIB_KB))
+                local movies=$((freed_gb * 10 / 45))
+
                 if [[ $movies -gt 0 ]]; then
                     if [[ $movies -eq 1 ]]; then
                         summary_details+=("Equivalent to ~$movies 4K movie of storage.")
@@ -1552,7 +1185,8 @@ perform_cleanup() {
                 fi
             fi
 
-            local final_free_space=$(get_free_space)
+            local final_free_space
+            final_free_space=$(get_free_space)
             summary_details+=("Free space now: $final_free_space")
         fi
     else
@@ -1577,8 +1211,12 @@ perform_cleanup() {
 }
 
 main() {
-    for arg in "$@"; do
-        case "$arg" in
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            "--help" | "-h")
+                show_clean_help
+                exit 0
+                ;;
             "--debug")
                 export MO_DEBUG=1
                 ;;
@@ -1586,12 +1224,21 @@ main() {
                 DRY_RUN=true
                 export MOLE_DRY_RUN=1
                 ;;
+            "--external")
+                shift
+                if [[ $# -eq 0 ]]; then
+                    echo "Missing path for --external" >&2
+                    exit 1
+                fi
+                EXTERNAL_VOLUME_TARGET=$(validate_external_volume_target "$1") || exit 1
+                ;;
             "--whitelist")
                 source "$SCRIPT_DIR/../lib/manage/whitelist.sh"
                 manage_whitelist "clean"
                 exit 0
                 ;;
         esac
+        shift
     done
 
     start_cleanup

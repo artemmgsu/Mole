@@ -12,15 +12,13 @@ if [[ -z "${PURGE_TARGETS:-}" ]]; then
     source "$_MOLE_MANAGE_DIR/../clean/project.sh"
 fi
 
-# Config file path (use :- to avoid re-declaration if already set)
-PURGE_PATHS_CONFIG="${PURGE_PATHS_CONFIG:-$HOME/.config/mole/purge_paths}"
+# Config file path (prefer the shared project constant when available)
+PURGE_PATHS_CONFIG="${PURGE_PATHS_CONFIG:-${PURGE_CONFIG_FILE:-$HOME/.config/mole/purge_paths}}"
 
 # Ensure config file exists with helpful template
 ensure_config_template() {
     if [[ ! -f "$PURGE_PATHS_CONFIG" ]]; then
-        ensure_user_dir "$(dirname "$PURGE_PATHS_CONFIG")"
-        cat > "$PURGE_PATHS_CONFIG" << 'EOF'
-# Mole Purge Paths - Directories to scan for project artifacts
+        if ! write_purge_config "# Mole Purge Paths - Directories to scan for project artifacts
 # Add one path per line (supports ~ for home directory)
 # Delete all paths or this file to use defaults
 #
@@ -28,7 +26,9 @@ ensure_config_template() {
 # ~/Documents/MyProjects
 # ~/Work/ClientA
 # ~/Work/ClientB
-EOF
+"; then
+            echo -e "${YELLOW}${ICON_WARNING}${NC} Could not initialize ${PURGE_PATHS_CONFIG/#$HOME/~}" >&2
+        fi
     fi
 }
 
@@ -56,9 +56,9 @@ manage_purge_paths() {
         for path in "${PURGE_SEARCH_PATHS[@]}"; do
             local display_path="${path/#$HOME/~}"
             if [[ -d "$path" ]]; then
-                echo -e "  ${GREEN}✓${NC} $display_path"
+                echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $display_path"
             else
-                echo -e "  ${GRAY}○${NC} $display_path${GRAY}, not found${NC}"
+                echo -e "  ${GRAY}${ICON_EMPTY}${NC} $display_path${GRAY}, not found${NC}"
             fi
         done
     fi
@@ -70,7 +70,7 @@ manage_purge_paths() {
             line="${line#"${line%%[![:space:]]*}"}"
             line="${line%"${line##*[![:space:]]}"}"
             [[ -z "$line" || "$line" =~ ^# ]] && continue
-            ((custom_count++))
+            custom_count=$((custom_count + 1))
         done < "$PURGE_PATHS_CONFIG"
     fi
 

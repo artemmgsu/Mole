@@ -139,80 +139,13 @@ if command -v shellcheck > /dev/null 2>&1; then
     if shellcheck mole bin/*.sh lib/*/*.sh scripts/*.sh; then
         echo -e "${GREEN}${ICON_SUCCESS} ShellCheck passed${NC}\n"
     else
-<<<<<<< HEAD
-        echo -e "${GREEN}✓ ShellCheck passed (${FILE_COUNT} files checked)${NC}\n"
-    fi
-else
-    echo -e "${YELLOW}⚠ shellcheck not installed, skipping${NC}\n"
-fi
-
-# 3. Unit tests (if available)
-echo -e "${YELLOW}3. Running tests...${NC}"
-if command -v bats > /dev/null 2>&1 && [ -d "tests" ]; then
-    if bats tests/*.bats; then
-        echo -e "${GREEN}✓ Tests passed${NC}\n"
-    else
-        echo -e "${RED}✗ Tests failed (see output above)${NC}\n"
-=======
         echo -e "${RED}${ICON_ERROR} ShellCheck failed${NC}\n"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
         exit 1
     fi
 else
     echo -e "${YELLOW}${ICON_WARNING} shellcheck not installed, skipping${NC}\n"
 fi
 
-<<<<<<< HEAD
-# 4. Code optimization checks
-echo -e "${YELLOW}4. Checking code optimizations...${NC}"
-OPTIMIZATION_SCORE=0
-TOTAL_CHECKS=0
-
-# Check 1: Keyboard input handling (restored to 1s for reliability)
-((TOTAL_CHECKS++))
-if grep -q "read -r -s -n 1 -t 1" lib/common.sh; then
-    echo -e "${GREEN}  ✓ Keyboard timeout properly configured (1s)${NC}"
-    ((OPTIMIZATION_SCORE++))
-else
-    echo -e "${YELLOW}  ⚠ Keyboard timeout may be misconfigured${NC}"
-fi
-
-# Check 2: Single-pass drain_pending_input
-((TOTAL_CHECKS++))
-DRAIN_PASSES=$(grep -c "while IFS= read -r -s -n 1" lib/common.sh || echo 0)
-if [[ $DRAIN_PASSES -eq 1 ]]; then
-    echo -e "${GREEN}  ✓ drain_pending_input optimized (single-pass)${NC}"
-    ((OPTIMIZATION_SCORE++))
-else
-    echo -e "${YELLOW}  ⚠ drain_pending_input has multiple passes${NC}"
-fi
-
-# Check 3: Log rotation once per session
-((TOTAL_CHECKS++))
-if grep -q "rotate_log_once" lib/common.sh && ! grep "rotate_log()" lib/common.sh | grep -v "rotate_log_once" > /dev/null 2>&1; then
-    echo -e "${GREEN}  ✓ Log rotation optimized (once per session)${NC}"
-    ((OPTIMIZATION_SCORE++))
-else
-    echo -e "${YELLOW}  ⚠ Log rotation not optimized${NC}"
-fi
-
-# Check 4: Simplified cache validation
-((TOTAL_CHECKS++))
-if ! grep -q "cache_meta\|cache_dir_mtime" bin/uninstall.sh; then
-    echo -e "${GREEN}  ✓ Cache validation simplified${NC}"
-    ((OPTIMIZATION_SCORE++))
-else
-    echo -e "${YELLOW}  ⚠ Cache still uses redundant metadata${NC}"
-fi
-
-# Check 5: Stricter path validation
-((TOTAL_CHECKS++))
-if grep -q "Consecutive slashes" bin/clean.sh; then
-    echo -e "${GREEN}  ✓ Path validation enhanced${NC}"
-    ((OPTIMIZATION_SCORE++))
-else
-    echo -e "${YELLOW}  ⚠ Path validation not enhanced${NC}"
-=======
 echo -e "${YELLOW}5. Running syntax check...${NC}"
 if ! bash -n mole; then
     echo -e "${RED}${ICON_ERROR} Syntax check failed, mole${NC}\n"
@@ -276,24 +209,13 @@ if grep -q "Consecutive slashes" bin/clean.sh; then
     ((OPTIMIZATION_SCORE++))
 else
     echo -e "${YELLOW}  ${ICON_WARNING} Path validation not enhanced${NC}"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 fi
 
 echo -e "${BLUE}  Optimization score: $OPTIMIZATION_SCORE/$TOTAL_CHECKS${NC}\n"
 
-<<<<<<< HEAD
-# Summary
-echo -e "${GREEN}=== All Checks Completed ===${NC}"
-if [[ $OPTIMIZATION_SCORE -eq $TOTAL_CHECKS ]]; then
-    echo -e "${GREEN}✓ Code quality checks passed!${NC}"
-    echo -e "${GREEN}✓ All optimizations applied!${NC}"
-else
-    echo -e "${YELLOW}⚠ Code quality checks passed, but some optimizations missing${NC}"
-=======
 echo -e "${GREEN}=== Checks Completed ===${NC}"
 if [[ $OPTIMIZATION_SCORE -eq $TOTAL_CHECKS ]]; then
     echo -e "${GREEN}${ICON_SUCCESS} All optimizations applied${NC}"
 else
     echo -e "${YELLOW}${ICON_WARNING} Some optimizations missing${NC}"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 fi

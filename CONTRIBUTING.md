@@ -8,6 +8,9 @@ brew install shfmt shellcheck bats-core golangci-lint
 
 # Install goimports for better Go formatting
 go install golang.org/x/tools/cmd/goimports@latest
+
+# Install pre-commit hook (runs format/lint checks on every commit)
+git config core.hooksPath .githooks
 ```
 
 ## Development
@@ -39,8 +42,6 @@ Run tests:
 
 Config: `.editorconfig` and `.shellcheckrc`
 
-<<<<<<< HEAD
-=======
 ### File Operations
 
 **Always use safe wrappers, never `rm -rf` directly:**
@@ -127,23 +128,11 @@ fi
 
 Format: `[MODULE_NAME] message` output to stderr.
 
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 ## Requirements
 
 - macOS 10.14 or newer, works on Intel and Apple Silicon
 - Default macOS Bash 3.2+ plus administrator privileges for cleanup tasks
 - Install Command Line Tools with `xcode-select --install` for curl, tar, and related utilities
-<<<<<<< HEAD
-- Go 1.24+ required when building the `mo status` or `mo analyze` TUI binaries locally
-
-## Go Components
-
-`mo status` and `mo analyze` use Go for the interactive dashboards.
-
-- Format code with `gofmt -w ./cmd/...`
-- Run `go test ./cmd/...` before submitting Go changes (ensures packages compile)
-- Build universal binaries locally via `./scripts/build-status.sh` and `./scripts/build-analyze.sh`
-=======
 - Go 1.24+ is required to build the `mo status` or `mo analyze` TUI binaries locally.
 
 ## Go Components
@@ -183,16 +172,13 @@ For releases, GitHub Actions builds architecture-specific binaries automatically
 - Extract constants instead of magic numbers
 - Use context for timeout control on external commands
 - Add comments explaining **why** something is done, not just **what** is being done.
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 
 ## Pull Requests
 
-> **Important:** Please submit PRs to the `dev` branch, not `main`. We merge `dev` into `main` after testing.
-
-1. Fork and create branch from `dev`
+1. Fork and create branch from `main`
 2. Make changes
 3. Run checks: `./scripts/check.sh`
 4. Commit and push
-5. Open PR targeting `dev`
+5. Open PR targeting `main`
 
 CI will verify formatting, linting, and tests.

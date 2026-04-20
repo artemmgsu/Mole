@@ -1,3 +1,5 @@
+//go:build darwin
+
 package main
 
 import (
@@ -18,11 +20,7 @@ func displayPath(path string) string {
 	return path
 }
 
-<<<<<<< HEAD
-// truncateMiddle truncates string in the middle, keeping head and tail.
-=======
 // truncateMiddle trims the middle, keeping head and tail.
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 func truncateMiddle(s string, maxWidth int) string {
 	runes := []rune(s)
 	currentWidth := displayWidth(s)
@@ -31,13 +29,7 @@ func truncateMiddle(s string, maxWidth int) string {
 		return s
 	}
 
-<<<<<<< HEAD
-	// Reserve 3 width for "..."
 	if maxWidth < 10 {
-		// Simple truncation for very small width
-=======
-	if maxWidth < 10 {
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 		width := 0
 		for i, r := range runes {
 			width += runeWidth(r)
@@ -48,17 +40,9 @@ func truncateMiddle(s string, maxWidth int) string {
 		return s
 	}
 
-<<<<<<< HEAD
-	// Keep more of the tail (filename usually more important)
 	targetHeadWidth := (maxWidth - 3) / 3
 	targetTailWidth := maxWidth - 3 - targetHeadWidth
 
-	// Find head cutoff point based on display width
-=======
-	targetHeadWidth := (maxWidth - 3) / 3
-	targetTailWidth := maxWidth - 3 - targetHeadWidth
-
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	headWidth := 0
 	headIdx := 0
 	for i, r := range runes {
@@ -70,10 +54,6 @@ func truncateMiddle(s string, maxWidth int) string {
 		headIdx = i + 1
 	}
 
-<<<<<<< HEAD
-	// Find tail cutoff point
-=======
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	tailWidth := 0
 	tailIdx := len(runes)
 	for i := len(runes) - 1; i >= 0; i-- {
@@ -102,7 +82,7 @@ func humanizeBytes(size int64) string {
 	if size < 0 {
 		return "0 B"
 	}
-	const unit = 1024
+	const unit = 1000
 	if size < unit {
 		return fmt.Sprintf("%d B", size)
 	}
@@ -112,22 +92,9 @@ func humanizeBytes(size int64) string {
 		exp++
 	}
 	value := float64(size) / float64(div)
-	return fmt.Sprintf("%.1f %cB", value, "KMGTPE"[exp])
+	return fmt.Sprintf("%.1f %cB", value, "kMGTPE"[exp])
 }
 
-<<<<<<< HEAD
-func coloredProgressBar(value, max int64, percent float64) string {
-	if max <= 0 {
-		return colorGray + strings.Repeat("░", barWidth) + colorReset
-	}
-
-	filled := int((value * int64(barWidth)) / max)
-	if filled > barWidth {
-		filled = barWidth
-	}
-
-	// Choose color based on percentage
-=======
 func coloredProgressBar(value, maxValue int64, percent float64) string {
 	if maxValue <= 0 {
 		return colorGray + strings.Repeat("░", barWidth) + colorReset
@@ -135,52 +102,17 @@ func coloredProgressBar(value, maxValue int64, percent float64) string {
 
 	filled := min(int((value*int64(barWidth))/maxValue), barWidth)
 
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	var barColor string
 	if percent >= 50 {
 		barColor = colorRed
 	} else if percent >= 20 {
 		barColor = colorYellow
 	} else if percent >= 5 {
-<<<<<<< HEAD
-		barColor = colorCyan
-=======
 		barColor = colorBlue
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	} else {
 		barColor = colorGreen
 	}
 
-<<<<<<< HEAD
-	bar := barColor
-	for i := 0; i < barWidth; i++ {
-		if i < filled {
-			if i < filled-1 {
-				bar += "█"
-			} else {
-				remainder := (value * int64(barWidth)) % max
-				if remainder > max/2 {
-					bar += "█"
-				} else if remainder > max/4 {
-					bar += "▓"
-				} else {
-					bar += "▒"
-				}
-			}
-		} else {
-			bar += colorGray + "░" + barColor
-		}
-	}
-	return bar + colorReset
-}
-
-// Calculate display width considering CJK characters.
-func runeWidth(r rune) int {
-	if r >= 0x4E00 && r <= 0x9FFF ||
-		r >= 0x3400 && r <= 0x4DBF ||
-		r >= 0xAC00 && r <= 0xD7AF ||
-		r >= 0xFF00 && r <= 0xFFEF {
-=======
 	var bar strings.Builder
 	bar.WriteString(barColor)
 	for i := range barWidth {
@@ -222,7 +154,6 @@ func runeWidth(r rune) int {
 		r >= 0x2700 && r <= 0x27BF || // Dingbats
 		r >= 0xFE10 && r <= 0xFE1F || // Vertical Forms
 		r >= 0x1F000 && r <= 0x1F02F { // Mahjong Tiles
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 		return 2
 	}
 	return 1
@@ -236,11 +167,6 @@ func displayWidth(s string) int {
 	return width
 }
 
-<<<<<<< HEAD
-func trimName(name string) string {
-	const (
-		maxWidth      = 28
-=======
 // calculateNameWidth computes name column width from terminal width.
 func calculateNameWidth(termWidth int) int {
 	const fixedWidth = 61
@@ -257,7 +183,6 @@ func calculateNameWidth(termWidth int) int {
 
 func trimNameWithWidth(name string, maxWidth int) string {
 	const (
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 		ellipsis      = "..."
 		ellipsisWidth = 3
 	)
@@ -296,11 +221,7 @@ func padName(name string, targetWidth int) string {
 	return name + strings.Repeat(" ", targetWidth-currentWidth)
 }
 
-<<<<<<< HEAD
-// formatUnusedTime formats the time since last access in a compact way.
-=======
 // formatUnusedTime formats time since last access.
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 func formatUnusedTime(lastAccess time.Time) string {
 	if lastAccess.IsZero() {
 		return ""

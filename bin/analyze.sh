@@ -1,11 +1,7 @@
 #!/bin/bash
-<<<<<<< HEAD
-# Entry point for the Go-based disk analyzer binary bundled with Mole.
-=======
 # Mole - Analyze command.
 # Runs the Go disk analyzer UI.
 # Uses bundled analyze-go binary.
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 
 set -euo pipefail
 

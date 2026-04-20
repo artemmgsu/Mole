@@ -184,9 +184,19 @@ format_installer_display() {
     truncated_name=$(truncate_by_display_width "$filename" "$available_width")
     local current_width
     current_width=$(get_display_width "$truncated_name")
-    local char_count=${#truncated_name}
+
+    # Get byte count for printf width calculation
+    local old_lc="${LC_ALL:-}"
+    export LC_ALL=C
+    local byte_count=${#truncated_name}
+    if [[ -n "$old_lc" ]]; then
+        export LC_ALL="$old_lc"
+    else
+        unset LC_ALL
+    fi
+
     local padding=$((available_width - current_width))
-    local printf_width=$((char_count + padding))
+    local printf_width=$((byte_count + padding))
 
     # Format: "filename  size | source"
     printf "%-*s %8s | %-10s" "$printf_width" "$truncated_name" "$size_str" "$source"
@@ -650,13 +660,22 @@ perform_installers() {
 show_summary() {
     local summary_heading="Installers cleaned"
     local -a summary_details=()
+    local dry_run_mode="${MOLE_DRY_RUN:-0}"
+
+    if [[ "$dry_run_mode" == "1" ]]; then
+        summary_heading="Dry run complete - no changes made"
+    fi
 
     if [[ $total_deleted -gt 0 ]]; then
         local freed_mb
         freed_mb=$(echo "$total_size_freed_kb" | awk '{printf "%.2f", $1/1024}')
 
-        summary_details+=("Removed ${GREEN}$total_deleted${NC} installers, freed ${GREEN}${freed_mb}MB${NC}")
-        summary_details+=("Your Mac is cleaner now!")
+        if [[ "$dry_run_mode" == "1" ]]; then
+            summary_details+=("Would remove ${GREEN}$total_deleted${NC} installers, free ${GREEN}${freed_mb}MB${NC}")
+        else
+            summary_details+=("Removed ${GREEN}$total_deleted${NC} installers, freed ${GREEN}${freed_mb}MB${NC}")
+            summary_details+=("Your Mac is cleaner now!")
+        fi
     else
         summary_details+=("No installers were removed")
     fi
@@ -668,8 +687,15 @@ show_summary() {
 main() {
     for arg in "$@"; do
         case "$arg" in
+            "--help" | "-h")
+                show_installer_help
+                exit 0
+                ;;
             "--debug")
                 export MO_DEBUG=1
+                ;;
+            "--dry-run" | "-n")
+                export MOLE_DRY_RUN=1
                 ;;
             *)
                 echo "Unknown option: $arg"
@@ -677,6 +703,11 @@ main() {
                 ;;
         esac
     done
+
+    if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
+        echo -e "${YELLOW}${ICON_DRY_RUN} DRY RUN MODE${NC}, No installer files will be removed"
+        printf '\n'
+    fi
 
     hide_cursor
     perform_installers

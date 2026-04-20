@@ -56,6 +56,11 @@ readonly SYSTEM_CRITICAL_BUNDLES_FAST=(
     "GlobalPreferences"
     ".GlobalPreferences"
     "org.pqrs.Karabiner*"
+    # CUPS printing subsystem ships with macOS; there is no parent .app to
+    # anchor it, so org.cups.* prefs always look "orphaned" to bundle-ID
+    # matching. Deleting them wipes the default printer and recent-printer
+    # list, which users see as lost saved printers. See #731.
+    "org.cups.*"
 )
 
 # Detailed list for uninstall protection
@@ -290,6 +295,8 @@ readonly DATA_PROTECTED_BUNDLES=(
     "clash.*"
     "Clash.*"
     "clash_*"
+    "*clash-verge*"
+    "*Clash-Verge*"
     "clashverge*"
     "ClashVerge*"
     "com.nssurge.surge-mac"
@@ -334,8 +341,8 @@ readonly DATA_PROTECTED_BUNDLES=(
     "*privateinternetaccess*"
 
     # Screensaver & Wallpaper
-    "*Aerial*"
-    "*aerial*"
+    "*Aerial.saver*"
+    "com.JohnCoates.Aerial*"
     "*Fliqlo*"
     "*fliqlo*"
 
@@ -550,6 +557,15 @@ readonly DATA_PROTECTED_BUNDLES=(
     "Firefox"
     "org.mozilla.*"
 
+    # Scientific & Professional Software
+    "com.sas.*"
+    "com.mathworks.*"
+    "com.ibm.spss.*"
+    "com.wolfram.*"
+    "com.stata.*"
+    "org.rstudio.*"
+    "com.tableausoftware.*"
+
     # License & App Stores
     "com.paddle.Paddle*"
     "com.setapp.DesktopClient"
@@ -663,6 +679,12 @@ should_protect_data() {
         com.apple.* | loginwindow | dock | systempreferences | finder | safari)
             return 0
             ;;
+        # CUPS is an OS-provided subsystem with no user-facing app; without this
+        # guard `~/Library/Preferences/org.cups.PrintingPrefs.plist` (which holds
+        # the default printer and recent printers) looks orphaned. See #731.
+        org.cups.*)
+            return 0
+            ;;
         backgroundtaskmanagement* | keychain* | security* | bluetooth* | wifi* | network* | tcc)
             return 0
             ;;
@@ -687,10 +709,14 @@ should_protect_data() {
         com.sublimetext.* | com.sublimehq.* | Cursor | Claude | ChatGPT | Ollama)
             return 0
             ;;
+        # Specific match to avoid ShellCheck redundancy warning with com.clash.*
+        com.clash.app)
+            return 0
+            ;;
         com.nssurge.* | com.v2ray.* | com.clash.* | ClashX* | Surge* | Shadowrocket* | Quantumult*)
             return 0
             ;;
-        clash-* | Clash-* | *-clash | *-Clash | clash.* | Clash.* | clash_* | clashverge* | ClashVerge*)
+        clash-* | Clash-* | *-clash | *-Clash | clash.* | Clash.* | clash_* | *clash-verge* | *Clash-Verge* | clashverge* | ClashVerge*)
             return 0
             ;;
         com.docker.* | com.getpostman.* | com.insomnia.*)
@@ -707,7 +733,13 @@ should_protect_data() {
             ;;
     esac
 
-    # Most apps won't match, return early
+    # Fallback: check against the full DATA_PROTECTED_BUNDLES list
+    for pattern in "${DATA_PROTECTED_BUNDLES[@]}"; do
+        if bundle_matches_pattern "$bundle_id" "$pattern"; then
+            return 0
+        fi
+    done
+
     return 1
 }
 
@@ -772,7 +804,8 @@ should_protect_path() {
     # Matches: .../Library/Group Containers/group.id/...
     if [[ "$path" =~ /Library/Containers/([^/]+) ]] || [[ "$path" =~ /Library/Group\ Containers/([^/]+) ]]; then
         local bundle_id="${BASH_REMATCH[1]}"
-        if should_protect_data "$bundle_id"; then
+        # In uninstall mode, only system components are protected; skip data protection
+        if [[ "${MOLE_UNINSTALL_MODE:-0}" != "1" ]] && should_protect_data "$bundle_id"; then
             return 0
         fi
     fi
@@ -789,12 +822,21 @@ should_protect_path() {
         */Library/Preferences/com.apple.dock.plist | */Library/Preferences/com.apple.finder.plist)
             return 0
             ;;
+        # Protect Mole's own runtime logs so cleanup cannot delete its active log targets.
+        */Library/Logs/mole | */Library/Logs/mole/ | */Library/Logs/mole/*)
+            return 0
+            ;;
         # Bluetooth and WiFi configurations
         */ByHost/com.apple.bluetooth.* | */ByHost/com.apple.wifi.*)
             return 0
             ;;
         # iCloud Drive - protect user's cloud synced data
         */Library/Mobile\ Documents* | */Mobile\ Documents*)
+            return 0
+            ;;
+        # CoreAudio and audio subsystem caches (issue #553)
+        # Cleaning these can cause audio output loss on Intel Macs
+        *com.apple.coreaudio* | *com.apple.audio.* | *coreaudiod*)
             return 0
             ;;
     esac
@@ -844,8 +886,20 @@ is_path_whitelisted() {
     local target_path="$1"
     [[ -z "$target_path" ]] && return 1
 
-    # Normalize path (remove trailing slash)
+    # Normalize path (remove trailing slash, collapse consecutive slashes).
+    # Callers sometimes concat a glob expansion that already ends in `/`
+    # with a sub-path that begins with `/`, producing `.../Default//Service
+    # Worker/...`. Without collapsing, those never match a whitelist entry
+    # written with single separators. See #724.
+    #
+    # Note: on bash 3.2 (macOS default), `${var//\/\//\/}` leaves a literal
+    # backslash in the replacement. Indirect variables sidestep that.
+    local _slash_single="/"
+    local _slash_double="//"
     local normalized_target="${target_path%/}"
+    while [[ "$normalized_target" == *"$_slash_double"* ]]; do
+        normalized_target="${normalized_target//$_slash_double/$_slash_single}"
+    done
 
     # Empty whitelist means nothing is protected
     [[ ${#WHITELIST_PATTERNS[@]} -eq 0 ]] && return 1
@@ -853,6 +907,9 @@ is_path_whitelisted() {
     for pattern in "${WHITELIST_PATTERNS[@]}"; do
         # Pattern is already expanded/normalized in bin/clean.sh
         local check_pattern="${pattern%/}"
+        while [[ "$check_pattern" == *"$_slash_double"* ]]; do
+            check_pattern="${check_pattern//$_slash_double/$_slash_single}"
+        done
         local has_glob="false"
         case "$check_pattern" in
             *\** | *\?* | *\[*)
@@ -932,6 +989,7 @@ find_app_files() {
         "$HOME/Library/WebKit/$bundle_id"
         "$HOME/Library/WebKit/com.apple.WebKit.WebContent/$bundle_id"
         "$HOME/Library/HTTPStorages/$bundle_id"
+        "$HOME/Library/HTTPStorages/$bundle_id.binarycookies"
         "$HOME/Library/Cookies/$bundle_id.binarycookies"
         "$HOME/Library/LaunchAgents/$bundle_id.plist"
         "$HOME/Library/Application Scripts/$bundle_id"
@@ -956,6 +1014,10 @@ find_app_files() {
         "$HOME/.local/share/$app_name"
         "$HOME/.$app_name"
         "$HOME/.$app_name"rc
+        "$HOME/Library/SyncedPreferences/$bundle_id.plist"
+        "$HOME/Library/Address Book Plug-Ins/$app_name.bundle"
+        "$HOME/Library/Accessibility/$app_name.bundle"
+        "$HOME/Library/Mail/Bundles/$app_name.mailbundle"
     )
 
     # Add all naming variants to cover inconsistent app directory naming
@@ -990,6 +1052,14 @@ find_app_files() {
         )
     fi
 
+    # Issue #422: Zed channel builds can leave data under another channel bundle id.
+    # Example: uninstalling dev.zed.Zed-Nightly should also detect dev.zed.Zed-Preview leftovers.
+    if [[ "$bundle_id" =~ ^dev\.zed\.Zed- ]] && [[ -d "$HOME/Library/HTTPStorages" ]]; then
+        while IFS= read -r -d '' zed_http_storage; do
+            files_to_clean+=("$zed_http_storage")
+        done < <(command find "$HOME/Library/HTTPStorages" -maxdepth 1 -name "dev.zed.Zed-*" -print0 2> /dev/null)
+    fi
+
     # Process standard patterns
     for p in "${user_patterns[@]}"; do
         local expanded_path="${p/#\~/$HOME}"
@@ -1018,9 +1088,14 @@ find_app_files() {
     # Handle Preferences and ByHost variants (only if bundle_id is valid)
     if [[ -n "$bundle_id" && "$bundle_id" != "unknown" && ${#bundle_id} -gt 3 ]]; then
         [[ -f ~/Library/Preferences/"$bundle_id".plist ]] && files_to_clean+=("$HOME/Library/Preferences/$bundle_id.plist")
+        [[ -d ~/Library/Preferences/"$bundle_id" ]] && files_to_clean+=("$HOME/Library/Preferences/$bundle_id")
         [[ -d ~/Library/Preferences/ByHost ]] && while IFS= read -r -d '' pref; do
             files_to_clean+=("$pref")
         done < <(command find ~/Library/Preferences/ByHost -maxdepth 1 \( -name "$bundle_id*.plist" \) -print0 2> /dev/null)
+
+        # NSURLSession download caches
+        local nsurlsession_dl="$HOME/Library/Caches/com.apple.nsurlsessiond/Downloads/$bundle_id"
+        [[ -d "$nsurlsession_dl" ]] && files_to_clean+=("$nsurlsession_dl")
 
         # Group Containers (special handling)
         if [[ -d ~/Library/Group\ Containers ]]; then
@@ -1028,6 +1103,38 @@ find_app_files() {
                 files_to_clean+=("$container")
             done < <(command find ~/Library/Group\ Containers -maxdepth 1 \( -name "*$bundle_id*" \) -print0 2> /dev/null)
         fi
+
+        # App extensions often use bundle-id-derived directories rather than the
+        # main bundle id exactly, for example share extensions or file providers.
+        local -a derived_bundle_roots=(
+            "$HOME/Library/Application Scripts"
+            "$HOME/Library/Containers"
+            "$HOME/Library/Application Support/FileProvider"
+        )
+        local derived_root=""
+        local derived_path=""
+        local existing_path=""
+        local already_added=false
+        for derived_root in "${derived_bundle_roots[@]}"; do
+            [[ -d "$derived_root" ]] || continue
+            while IFS= read -r -d '' derived_path; do
+                already_added=false
+                for existing_path in "${files_to_clean[@]}"; do
+                    if [[ "$existing_path" == "$derived_path" ]]; then
+                        already_added=true
+                        break
+                    fi
+                done
+                [[ "$already_added" == "true" ]] || files_to_clean+=("$derived_path")
+            done < <(command find "$derived_root" -maxdepth 1 -type d -name "*$bundle_id*" -print0 2> /dev/null)
+        done
+    fi
+
+    # Shared file lists (.sfl4 - recent documents etc.)
+    if [[ -n "$bundle_id" && "$bundle_id" != "unknown" ]] && [[ -d "$HOME/Library/Application Support/com.apple.sharedfilelist" ]]; then
+        while IFS= read -r -d '' sfl4_file; do
+            files_to_clean+=("$sfl4_file")
+        done < <(command find "$HOME/Library/Application Support/com.apple.sharedfilelist" -maxdepth 2 -name "${bundle_id}.sfl4" -print0 2> /dev/null)
     fi
 
     # Launch Agents by name (special handling)
@@ -1088,8 +1195,17 @@ find_app_files() {
     [[ "$app_name" =~ Godot|godot ]] && [[ -d ~/Library/Application\ Support/Godot ]] && files_to_clean+=("$HOME/Library/Application Support/Godot")
 
     # 6. Tools
-    [[ "$bundle_id" =~ microsoft.*vscode ]] && [[ -d ~/.vscode ]] && files_to_clean+=("$HOME/.vscode")
+    if [[ "$bundle_id" =~ microsoft.*[vV][sS][cC]ode ]]; then
+        [[ -d "$HOME/.vscode" ]] && files_to_clean+=("$HOME/.vscode")
+        [[ -d "$HOME/Library/Caches/com.microsoft.VSCode.ShipIt" ]] && files_to_clean+=("$HOME/Library/Caches/com.microsoft.VSCode.ShipIt")
+        [[ -d "$HOME/Library/Caches/com.microsoft.VSCodeInsiders.ShipIt" ]] && files_to_clean+=("$HOME/Library/Caches/com.microsoft.VSCodeInsiders.ShipIt")
+    fi
     [[ "$app_name" =~ Docker ]] && [[ -d ~/.docker ]] && files_to_clean+=("$HOME/.docker")
+
+    # 6.1 Maestro Studio
+    if [[ "$bundle_id" == "com.maestro.studio" ]] || [[ "$lowercase_name" =~ maestro[[:space:]]*studio ]]; then
+        [[ -d ~/.mobiledev ]] && files_to_clean+=("$HOME/.mobiledev")
+    fi
 
     # 7. Raycast
     if [[ "$bundle_id" == "com.raycast.macos" ]]; then
@@ -1104,6 +1220,10 @@ find_app_files() {
                 files_to_clean+=("$p")
             done < <(command find "$dir" -maxdepth 1 -type d -iname "*raycast*" -print0 2> /dev/null)
         done
+
+        # Explicit Raycast container directories (hardcoded leftovers)
+        [[ -d "$HOME/Library/Containers/com.raycast.macos.BrowserExtension" ]] && files_to_clean+=("$HOME/Library/Containers/com.raycast.macos.BrowserExtension")
+        [[ -d "$HOME/Library/Containers/com.raycast.macos.RaycastAppIntents" ]] && files_to_clean+=("$HOME/Library/Containers/com.raycast.macos.RaycastAppIntents")
 
         # Cache (deeper search)
         [[ -d "$HOME/Library/Caches" ]] && while IFS= read -r -d '' p; do
@@ -1121,6 +1241,49 @@ find_app_files() {
     if [[ ${#files_to_clean[@]} -gt 0 ]]; then
         printf '%s\n' "${files_to_clean[@]}"
     fi
+    return 0
+}
+
+get_diagnostic_report_paths_for_app() {
+    local app_path="$1"
+    local app_name="$2"
+    local directory="$3"
+    local prefix=""
+    local exec_name=""
+    local nospace_name="${app_name// /}"
+
+    [[ -z "$app_path" || -z "$app_name" || -z "$directory" ]] && return 0
+    [[ ! -d "$directory" ]] && return 0
+
+    if [[ -f "$app_path/Contents/Info.plist" ]]; then
+        exec_name=$(defaults read "$app_path/Contents/Info.plist" CFBundleExecutable 2> /dev/null || echo "")
+        if [[ -z "$exec_name" ]]; then
+            exec_name=$(grep -A1 "CFBundleExecutable" "$app_path/Contents/Info.plist" 2> /dev/null | grep "<string>" | sed -n 's/.*<string>\([^<]*\)<\/string>.*/\1/p' | head -1)
+        fi
+    fi
+    prefix="${exec_name:-$nospace_name}"
+    [[ -z "$prefix" || ${#prefix} -lt 3 ]] && return 0
+
+    local dir_abs
+    dir_abs=$(cd "$directory" 2> /dev/null && pwd -P 2> /dev/null) || return 0
+    while IFS= read -r -d '' f; do
+        [[ -z "$f" ]] && continue
+        local base
+        base=$(basename "$f" 2> /dev/null)
+        case "$base" in
+            "$prefix".* | "$prefix"_* | "$prefix"-*) ;;
+            *) continue ;;
+        esac
+        case "$base" in
+            *.ips | *.crash | *.spin | *.diag) ;;
+            *) continue ;;
+        esac
+        printf '%s\n' "$f"
+    done < <(
+        find "$dir_abs" -maxdepth 1 -type f \
+            \( -name "${prefix}.*" -o -name "${prefix}_*" -o -name "${prefix}-*" \) \
+            -print0 2> /dev/null || true
+    )
     return 0
 }
 
@@ -1158,6 +1321,10 @@ find_app_system_files() {
         "/Library/Screen Savers/$app_name.saver"
         "/Library/Caches/$bundle_id"
         "/Library/Caches/$app_name"
+        "/Library/Extensions/$app_name.kext"
+        "/Library/StartupItems/$app_name"
+        "/Library/Logs/$app_name"
+        "/Library/Logs/$bundle_id"
     )
 
     # Add all naming variants for apps with spaces in name
@@ -1188,6 +1355,21 @@ find_app_system_files() {
 
         system_files+=("$p")
     done
+
+    # System LaunchAgents/LaunchDaemons often use bundle-id-derived helper
+    # labels (for example "<bundle>.ProxyConfigHelper.plist"), so scan for
+    # validated reverse-DNS bundle-id prefixes before falling back to app name.
+    # The two -name patterns are anchored at the dot boundary so that, e.g.,
+    # bundle "com.foo" matches "com.foo.plist" and "com.foo.helper.plist" but
+    # NOT "com.foobar.plist" from an unrelated vendor.
+    if [[ -n "$bundle_id" && "$bundle_id" != "unknown" &&
+        "$bundle_id" =~ ^[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)+$ ]]; then
+        for base in /Library/LaunchAgents /Library/LaunchDaemons; do
+            [[ -d "$base" ]] && while IFS= read -r -d '' plist; do
+                system_files+=("$plist")
+            done < <(command find "$base" -maxdepth 1 \( -name "${bundle_id}.plist" -o -name "${bundle_id}.*.plist" \) -print0 2> /dev/null)
+        done
+    fi
 
     # System LaunchAgents/LaunchDaemons by name
     if [[ ${#app_name} -gt 3 ]]; then
@@ -1343,6 +1525,11 @@ force_kill_app() {
     # Gracefully terminates or force-kills an application
     local app_name="$1"
     local app_path="${2:-""}"
+
+    if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
+        debug_log "[DRY RUN] Would terminate running app: $app_name"
+        return 0
+    fi
 
     # Get the executable name from bundle if app_path is provided
     local exec_name=""

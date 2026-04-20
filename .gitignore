@@ -43,21 +43,15 @@ tests/tmp-*
 
 # AI Assistant Instructions
 .claude/
+.agents/
 .gemini/
 .kiro/
 CLAUDE.md
-<<<<<<< HEAD
-copilot-instructions.md
-
-# Go build artifacts
-cmd/analyze/analyze
-cmd/status/status
-/status
-=======
 GEMINI.md
 ANTIGRAVITY.md
 WARP.md
 AGENTS.md
+journal/
 .cursorrules
 
 # Go build artifacts (development)
@@ -84,4 +78,7 @@ coverage.html
 
 session.json
 run_tests.ps1
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
+AGENTS.md
+mole_guidelines.md
+CLAUDE.md
+.claude/settings.local.json

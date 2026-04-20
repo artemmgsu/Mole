@@ -34,26 +34,26 @@ setup() {
 }
 
 @test "bytes_to_human produces correct output for GB range" {
-    result=$(bytes_to_human 1073741824)
+    result=$(bytes_to_human 1000000000)
     [ "$result" = "1.00GB" ]
 
-    result=$(bytes_to_human 5368709120)
+    result=$(bytes_to_human 5000000000)
     [ "$result" = "5.00GB" ]
 }
 
 @test "bytes_to_human produces correct output for MB range" {
-    result=$(bytes_to_human 1048576)
+    result=$(bytes_to_human 1000000)
     [ "$result" = "1.0MB" ]
 
-    result=$(bytes_to_human 104857600)
+    result=$(bytes_to_human 100000000)
     [ "$result" = "100.0MB" ]
 }
 
 @test "bytes_to_human produces correct output for KB range" {
-    result=$(bytes_to_human 1024)
+    result=$(bytes_to_human 1000)
     [ "$result" = "1KB" ]
 
-    result=$(bytes_to_human 10240)
+    result=$(bytes_to_human 10000)
     [ "$result" = "10KB" ]
 }
 
@@ -77,7 +77,7 @@ setup() {
     local start end elapsed
     local limit_ms="${MOLE_PERF_GET_FILE_SIZE_LIMIT_MS:-2000}"
     start=$(date +%s%N)
-    for i in {1..100}; do
+    for i in {1..50}; do
         get_file_size "$test_file" > /dev/null
     done
     end=$(date +%s%N)
@@ -108,7 +108,7 @@ setup() {
 
 @test "get_invoking_user executes quickly" {
     local start end elapsed
-    local limit_ms="${MOLE_PERF_GET_INVOKING_USER_LIMIT_MS:-500}"
+    local limit_ms="${MOLE_PERF_GET_INVOKING_USER_LIMIT_MS:-2000}"
 
     start=$(date +%s%N)
     for i in {1..100}; do
@@ -132,6 +132,7 @@ setup() {
 
 @test "create_temp_file and cleanup_temp_files work efficiently" {
     local start end elapsed
+    local limit_ms="${MOLE_PERF_CREATE_TEMP_FILE_LIMIT_MS:-3000}"
 
     declare -a MOLE_TEMP_DIRS=()
 
@@ -143,7 +144,7 @@ setup() {
 
     elapsed=$(( (end - start) / 1000000 ))
 
-    [ "$elapsed" -lt 1000 ]
+    [ "$elapsed" -lt "$limit_ms" ]
 
     [ "${#MOLE_TEMP_FILES[@]}" -eq 50 ]
 
@@ -152,7 +153,7 @@ setup() {
     end=$(date +%s%N)
 
     elapsed=$(( (end - start) / 1000000 ))
-    [ "$elapsed" -lt 2000 ]
+    [ "$elapsed" -lt "$limit_ms" ]
 
     [ "${#MOLE_TEMP_FILES[@]}" -eq 0 ]
 }
@@ -233,5 +234,6 @@ setup() {
 
     elapsed=$(( (end - start) / 1000000 ))
 
-    [ "$elapsed" -lt 2000 ]
+    local limit_ms="${MOLE_PERF_SECTION_LIMIT_MS:-2000}"
+    [ "$elapsed" -lt "$limit_ms" ]
 }

@@ -1,19 +1,15 @@
+//go:build darwin
+
 package main
 
 import (
-<<<<<<< HEAD
-=======
 	"context"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-<<<<<<< HEAD
-=======
 	"slices"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	"sync"
 	"time"
 
@@ -34,54 +30,47 @@ var (
 func snapshotFromModel(m model) historyEntry {
 	return historyEntry{
 		Path:          m.path,
-<<<<<<< HEAD
-		Entries:       cloneDirEntries(m.entries),
-		LargeFiles:    cloneFileEntries(m.largeFiles),
-		TotalSize:     m.totalSize,
-=======
 		Entries:       slices.Clone(m.entries),
 		LargeFiles:    slices.Clone(m.largeFiles),
 		TotalSize:     m.totalSize,
 		TotalFiles:    m.totalFiles,
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 		Selected:      m.selected,
 		EntryOffset:   m.offset,
 		LargeSelected: m.largeSelected,
 		LargeOffset:   m.largeOffset,
-<<<<<<< HEAD
-=======
+		NeedsRefresh:  m.viewNeedsRefresh,
 		IsOverview:    m.isOverview,
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	}
 }
 
-func cacheSnapshot(m model) historyEntry {
-	entry := snapshotFromModel(m)
-	entry.Dirty = false
+func filterNonEmptyEntries(entries []dirEntry) []dirEntry {
+	filtered := make([]dirEntry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Size > 0 {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
+}
+
+func historyEntryFromScanResult(path string, result scanResult, previous historyEntry, needsRefresh bool) historyEntry {
+	entry := historyEntry{
+		Path:          path,
+		Entries:       slices.Clone(result.Entries),
+		LargeFiles:    slices.Clone(result.LargeFiles),
+		TotalSize:     result.TotalSize,
+		TotalFiles:    result.TotalFiles,
+		Selected:      previous.Selected,
+		EntryOffset:   previous.EntryOffset,
+		LargeSelected: previous.LargeSelected,
+		LargeOffset:   previous.LargeOffset,
+		NeedsRefresh:  needsRefresh,
+		Dirty:         false,
+		IsOverview:    previous.IsOverview,
+	}
 	return entry
 }
 
-<<<<<<< HEAD
-func cloneDirEntries(entries []dirEntry) []dirEntry {
-	if len(entries) == 0 {
-		return nil
-	}
-	copied := make([]dirEntry, len(entries))
-	copy(copied, entries)
-	return copied
-}
-
-func cloneFileEntries(files []fileEntry) []fileEntry {
-	if len(files) == 0 {
-		return nil
-	}
-	copied := make([]fileEntry, len(files))
-	copy(copied, files)
-	return copied
-}
-
-=======
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 func ensureOverviewSnapshotCacheLocked() error {
 	if overviewSnapshotLoaded {
 		return nil
@@ -218,7 +207,7 @@ func getCachePath(path string) (string, error) {
 	return filepath.Join(cacheDir, filename), nil
 }
 
-func loadCacheFromDisk(path string) (*cacheEntry, error) {
+func loadRawCacheFromDisk(path string) (*cacheEntry, error) {
 	cachePath, err := getCachePath(path)
 	if err != nil {
 		return nil, err
@@ -228,15 +217,20 @@ func loadCacheFromDisk(path string) (*cacheEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-<<<<<<< HEAD
-	defer file.Close()
-=======
 	defer file.Close() //nolint:errcheck
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 
 	var entry cacheEntry
 	decoder := gob.NewDecoder(file)
 	if err := decoder.Decode(&entry); err != nil {
+		return nil, err
+	}
+
+	return &entry, nil
+}
+
+func loadCacheFromDisk(path string) (*cacheEntry, error) {
+	entry, err := loadRawCacheFromDisk(path)
+	if err != nil {
 		return nil, err
 	}
 
@@ -245,25 +239,49 @@ func loadCacheFromDisk(path string) (*cacheEntry, error) {
 		return nil, err
 	}
 
-	if info.ModTime().After(entry.ModTime) {
-<<<<<<< HEAD
-		// Only expire cache if the directory has been newer for longer than the grace window.
-=======
-		// Allow grace window.
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
-		if cacheModTimeGrace <= 0 || info.ModTime().Sub(entry.ModTime) > cacheModTimeGrace {
-			return nil, fmt.Errorf("cache expired: directory modified")
-		}
-	}
-
-	if time.Since(entry.ScanTime) > 7*24*time.Hour {
+	scanAge := time.Since(entry.ScanTime)
+	if scanAge > 7*24*time.Hour {
 		return nil, fmt.Errorf("cache expired: too old")
 	}
 
-	return &entry, nil
+	if info.ModTime().After(entry.ModTime) {
+		// Allow grace window.
+		if cacheModTimeGrace <= 0 || info.ModTime().Sub(entry.ModTime) > cacheModTimeGrace {
+			// Directory mod time is noisy on macOS; reuse recent cache to avoid
+			// frequent full rescans while still forcing refresh for older entries.
+			if cacheReuseWindow <= 0 || scanAge > cacheReuseWindow {
+				return nil, fmt.Errorf("cache expired: directory modified")
+			}
+		}
+	}
+
+	return entry, nil
+}
+
+// loadStaleCacheFromDisk loads cache without strict freshness checks.
+// It is used for fast first paint before triggering a background refresh.
+func loadStaleCacheFromDisk(path string) (*cacheEntry, error) {
+	entry, err := loadRawCacheFromDisk(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := os.Stat(path); err != nil {
+		return nil, err
+	}
+
+	if time.Since(entry.ScanTime) > staleCacheTTL {
+		return nil, fmt.Errorf("stale cache expired")
+	}
+
+	return entry, nil
 }
 
 func saveCacheToDisk(path string, result scanResult) error {
+	return saveCacheToDiskWithOptions(path, result, false)
+}
+
+func saveCacheToDiskWithOptions(path string, result scanResult, needsRefresh bool) error {
 	cachePath, err := getCachePath(path)
 	if err != nil {
 		return err
@@ -275,33 +293,25 @@ func saveCacheToDisk(path string, result scanResult) error {
 	}
 
 	entry := cacheEntry{
-		Entries:    result.Entries,
-		LargeFiles: result.LargeFiles,
-		TotalSize:  result.TotalSize,
-<<<<<<< HEAD
-=======
-		TotalFiles: result.TotalFiles,
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
-		ModTime:    info.ModTime(),
-		ScanTime:   time.Now(),
+		Entries:      result.Entries,
+		LargeFiles:   result.LargeFiles,
+		TotalSize:    result.TotalSize,
+		TotalFiles:   result.TotalFiles,
+		ModTime:      info.ModTime(),
+		ScanTime:     time.Now(),
+		NeedsRefresh: needsRefresh,
 	}
 
 	file, err := os.Create(cachePath)
 	if err != nil {
 		return err
 	}
-<<<<<<< HEAD
-	defer file.Close()
-=======
 	defer file.Close() //nolint:errcheck
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 
 	encoder := gob.NewEncoder(file)
 	return encoder.Encode(entry)
 }
 
-<<<<<<< HEAD
-=======
 // peekCacheTotalFiles attempts to read the total file count from cache,
 // ignoring expiration. Used for initial scan progress estimates.
 func peekCacheTotalFiles(path string) (int64, error) {
@@ -325,7 +335,6 @@ func peekCacheTotalFiles(path string) (int64, error) {
 	return entry.TotalFiles, nil
 }
 
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 func invalidateCache(path string) {
 	cachePath, err := getCachePath(path)
 	if err == nil {
@@ -352,42 +361,22 @@ func removeOverviewSnapshot(path string) {
 	}
 }
 
-<<<<<<< HEAD
-// prefetchOverviewCache scans overview directories in background
-// to populate cache for faster overview mode access
-func prefetchOverviewCache() {
-	entries := createOverviewEntries()
-
-	// Check which entries need refresh
-	var needScan []string
-	for _, entry := range entries {
-		// Skip if we have fresh cache
-=======
 // prefetchOverviewCache warms overview cache in background.
 func prefetchOverviewCache(ctx context.Context) {
 	entries := createOverviewEntries()
 
 	var needScan []string
 	for _, entry := range entries {
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 		if size, err := loadStoredOverviewSize(entry.Path); err == nil && size > 0 {
 			continue
 		}
 		needScan = append(needScan, entry.Path)
 	}
 
-<<<<<<< HEAD
-	// Nothing to scan
-=======
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 	if len(needScan) == 0 {
 		return
 	}
 
-<<<<<<< HEAD
-	// Scan and cache in background
-	for _, path := range needScan {
-=======
 	for _, path := range needScan {
 		select {
 		case <-ctx.Done():
@@ -395,7 +384,6 @@ func prefetchOverviewCache(ctx context.Context) {
 		default:
 		}
 
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 		size, err := measureOverviewSize(path)
 		if err == nil && size > 0 {
 			_ = storeOverviewSize(path, size)

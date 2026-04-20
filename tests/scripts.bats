@@ -26,51 +26,6 @@ setup() {
     mkdir -p "$HOME"
 }
 
-<<<<<<< HEAD
-@test "format.sh --check validates script formatting" {
-    if ! command -v shfmt > /dev/null 2>&1; then
-        skip "shfmt not installed"
-    fi
-
-    run "$PROJECT_ROOT/scripts/format.sh" --check
-    # May pass or fail depending on formatting, but should not error
-    [[ "$status" -eq 0 || "$status" -eq 1 ]]
-}
-
-@test "format.sh --help shows usage information" {
-    run "$PROJECT_ROOT/scripts/format.sh" --help
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Usage"* ]]
-}
-
-@test "check.sh script exists and is valid" {
-    # Don't actually run check.sh in tests - it would recursively run all bats tests!
-    # Just verify the script is valid bash
-    [ -f "$PROJECT_ROOT/scripts/check.sh" ]
-    [ -x "$PROJECT_ROOT/scripts/check.sh" ]
-
-    # Verify it has the expected structure
-    run bash -c "grep -q 'Quality Checks' '$PROJECT_ROOT/scripts/check.sh'"
-    [ "$status" -eq 0 ]
-}
-
-@test "build-analyze.sh detects missing Go toolchain" {
-    if command -v go > /dev/null 2>&1; then
-        skip "Go is installed, cannot test missing toolchain"
-    fi
-
-    run "$PROJECT_ROOT/scripts/build-analyze.sh"
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"Go not installed"* ]]
-}
-
-@test "build-analyze.sh has version info support" {
-    # Don't actually build in tests - too slow (10-30 seconds)
-    # Just verify the script contains version info logic
-    run bash -c "grep -q 'VERSION=' '$PROJECT_ROOT/scripts/build-analyze.sh'"
-    [ "$status" -eq 0 ]
-    run bash -c "grep -q 'BUILD_TIME=' '$PROJECT_ROOT/scripts/build-analyze.sh'"
-=======
 @test "check.sh --help shows usage information" {
     run "$PROJECT_ROOT/scripts/check.sh" --help
     [ "$status" -eq 0 ]
@@ -101,34 +56,74 @@ setup() {
 }
 
 @test "Makefile has build target for Go binaries" {
-    run bash -c "grep -q 'go build' '$PROJECT_ROOT/Makefile'"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
+    run bash -c "grep -Eq '(^|[[:space:]])(go|\\$\\(GO\\))[[:space:]]+build' '$PROJECT_ROOT/Makefile'"
     [ "$status" -eq 0 ]
 }
 
 @test "setup-quick-launchers.sh has detect_mo function" {
-<<<<<<< HEAD
-    # Don't actually run the script - it opens Raycast and creates files
-    # Just verify it contains the detection logic
-=======
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
     run bash -c "grep -q 'detect_mo()' '$PROJECT_ROOT/scripts/setup-quick-launchers.sh'"
     [ "$status" -eq 0 ]
 }
 
 @test "setup-quick-launchers.sh has Raycast script generation" {
-<<<<<<< HEAD
-    # Don't actually run the script - it opens Raycast
-    # Just verify it contains Raycast workflow creation logic
-=======
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
     run bash -c "grep -q 'create_raycast_commands' '$PROJECT_ROOT/scripts/setup-quick-launchers.sh'"
     [ "$status" -eq 0 ]
     run bash -c "grep -q 'write_raycast_script' '$PROJECT_ROOT/scripts/setup-quick-launchers.sh'"
     [ "$status" -eq 0 ]
 }
-<<<<<<< HEAD
-=======
+
+@test "setup-quick-launchers.sh generates Raycast scripts with discoverable metadata" {
+    local fake_bin="$HOME/fake-bin"
+    mkdir -p "$fake_bin"
+    cat > "$fake_bin/mo" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+    chmod +x "$fake_bin/mo"
+
+    run env HOME="$HOME" TERM="dumb" PATH="$fake_bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+        "$PROJECT_ROOT/scripts/setup-quick-launchers.sh"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Raycast: Mole Clean | Alfred keyword: clean"* ]]
+    [[ "$output" == *"Raycast: Mole Status | Alfred keyword: status"* ]]
+
+    local raycast_dir="$HOME/Library/Application Support/Raycast/script-commands"
+    [ -d "$raycast_dir" ]
+
+    local clean_script="$raycast_dir/mole-clean.sh"
+    local uninstall_script="$raycast_dir/mole-uninstall.sh"
+    local optimize_script="$raycast_dir/mole-optimize.sh"
+    local analyze_script="$raycast_dir/mole-analyze.sh"
+    local status_script="$raycast_dir/mole-status.sh"
+
+    [ -x "$clean_script" ]
+    [ -x "$uninstall_script" ]
+    [ -x "$optimize_script" ]
+    [ -x "$analyze_script" ]
+    [ -x "$status_script" ]
+
+    run grep -q '^# @raycast.title Mole Clean$' "$clean_script"
+    [ "$status" -eq 0 ]
+    run grep -q '^# @raycast.title Mole Uninstall$' "$uninstall_script"
+    [ "$status" -eq 0 ]
+    run grep -q '^# @raycast.title Mole Optimize$' "$optimize_script"
+    [ "$status" -eq 0 ]
+    run grep -q '^# @raycast.title Mole Analyze$' "$analyze_script"
+    [ "$status" -eq 0 ]
+    run grep -q '^# @raycast.title Mole Status$' "$status_script"
+    [ "$status" -eq 0 ]
+
+    run grep -q '^# @raycast.description Deep system cleanup with Mole$' "$clean_script"
+    [ "$status" -eq 0 ]
+    run grep -q '^# @raycast.description Uninstall applications with Mole$' "$uninstall_script"
+    [ "$status" -eq 0 ]
+    run grep -q '^# @raycast.description System health checks and optimization$' "$optimize_script"
+    [ "$status" -eq 0 ]
+    run grep -q '^# @raycast.description Disk space analysis with Mole$' "$analyze_script"
+    [ "$status" -eq 0 ]
+    run grep -q '^# @raycast.description Live system status dashboard$' "$status_script"
+    [ "$status" -eq 0 ]
+}
 
 @test "install.sh supports dev branch installs" {
     run bash -c "grep -q 'refs/heads/dev.tar.gz' '$PROJECT_ROOT/install.sh'"
@@ -136,4 +131,72 @@ setup() {
     run bash -c "grep -q 'MOLE_VERSION=\"dev\"' '$PROJECT_ROOT/install.sh'"
     [ "$status" -eq 0 ]
 }
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
+
+@test "update_homebrew_tap_formula.sh updates all release artifacts" {
+    local formula_file="$HOME/mole.rb"
+    cat > "$formula_file" <<'EOF'
+class Mole < Formula
+  desc "Mole"
+  homepage "https://github.com/tw93/Mole"
+  url "https://github.com/tw93/Mole/archive/refs/tags/V1.32.0.tar.gz"
+  sha256 "old-source-sha"
+
+  on_arm do
+    url "https://github.com/tw93/Mole/releases/download/V1.32.0/binaries-darwin-arm64.tar.gz"
+    sha256 "old-arm-sha"
+  end
+
+  on_intel do
+    url "https://github.com/tw93/Mole/releases/download/V1.32.0/binaries-darwin-amd64.tar.gz"
+    sha256 "old-amd-sha"
+  end
+end
+EOF
+
+    run "$PROJECT_ROOT/scripts/update_homebrew_tap_formula.sh" \
+        --formula "$formula_file" \
+        --tag "V1.33.0" \
+        --source-sha "new-source-sha" \
+        --arm-sha "new-arm-sha" \
+        --amd-sha "new-amd-sha"
+    [ "$status" -eq 0 ]
+
+    run grep -q 'url "https://github.com/tw93/Mole/archive/refs/tags/V1.33.0.tar.gz"' "$formula_file"
+    [ "$status" -eq 0 ]
+    run grep -q 'sha256 "new-source-sha"' "$formula_file"
+    [ "$status" -eq 0 ]
+    run grep -q 'url "https://github.com/tw93/Mole/releases/download/V1.33.0/binaries-darwin-arm64.tar.gz"' "$formula_file"
+    [ "$status" -eq 0 ]
+    run grep -q 'sha256 "new-arm-sha"' "$formula_file"
+    [ "$status" -eq 0 ]
+    run grep -q 'url "https://github.com/tw93/Mole/releases/download/V1.33.0/binaries-darwin-amd64.tar.gz"' "$formula_file"
+    [ "$status" -eq 0 ]
+    run grep -q 'sha256 "new-amd-sha"' "$formula_file"
+    [ "$status" -eq 0 ]
+}
+
+@test "update_homebrew_tap_formula.sh fails when expected sections are missing" {
+    local formula_file="$HOME/mole-missing-intel.rb"
+    cat > "$formula_file" <<'EOF'
+class Mole < Formula
+  desc "Mole"
+  homepage "https://github.com/tw93/Mole"
+  url "https://github.com/tw93/Mole/archive/refs/tags/V1.32.0.tar.gz"
+  sha256 "old-source-sha"
+
+  on_arm do
+    url "https://github.com/tw93/Mole/releases/download/V1.32.0/binaries-darwin-arm64.tar.gz"
+    sha256 "old-arm-sha"
+  end
+end
+EOF
+
+    run "$PROJECT_ROOT/scripts/update_homebrew_tap_formula.sh" \
+        --formula "$formula_file" \
+        --tag "V1.33.0" \
+        --source-sha "new-source-sha" \
+        --arm-sha "new-arm-sha" \
+        --amd-sha "new-amd-sha"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Failed to update formula"* ]]
+}

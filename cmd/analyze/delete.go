@@ -1,37 +1,27 @@
+//go:build darwin
+
 package main
 
 import (
-<<<<<<< HEAD
-	"io/fs"
-	"os"
-	"path/filepath"
-	"sync/atomic"
-=======
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-<<<<<<< HEAD
-func deletePathCmd(path string, counter *int64) tea.Cmd {
-	return func() tea.Msg {
-		count, err := deletePathWithProgress(path, counter)
-=======
 const trashTimeout = 30 * time.Second
 
 func deletePathCmd(path string, counter *int64) tea.Cmd {
 	return func() tea.Msg {
 		count, err := trashPathWithProgress(path, counter)
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 		return deleteProgressMsg{
 			done:  true,
 			err:   err,
@@ -41,30 +31,6 @@ func deletePathCmd(path string, counter *int64) tea.Cmd {
 	}
 }
 
-<<<<<<< HEAD
-func deletePathWithProgress(root string, counter *int64) (int64, error) {
-	var count int64
-	var firstErr error
-
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			// Skip permission errors but continue walking
-			if os.IsPermission(err) {
-				if firstErr == nil {
-					firstErr = err
-				}
-				return filepath.SkipDir
-			}
-			// For other errors, record and continue
-			if firstErr == nil {
-				firstErr = err
-			}
-			return nil
-		}
-
-		if !d.IsDir() {
-			if removeErr := os.Remove(path); removeErr == nil {
-=======
 // deleteMultiplePathsCmd moves paths to Trash and aggregates results.
 func deleteMultiplePathsCmd(paths []string, counter *int64) tea.Cmd {
 	return func() tea.Msg {
@@ -131,32 +97,10 @@ func trashPathWithProgress(root string, counter *int64) (int64, error) {
 				return nil
 			}
 			if !d.IsDir() {
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
 				count++
 				if counter != nil {
 					atomic.StoreInt64(counter, count)
 				}
-<<<<<<< HEAD
-			} else if firstErr == nil {
-				// Record first deletion error
-				firstErr = removeErr
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return count, err
-	}
-
-	if err := os.RemoveAll(root); err != nil {
-		return count, err
-	}
-
-	// Return the first error encountered during deletion if any
-	return count, firstErr
-=======
 			}
 			return nil
 		})
@@ -178,9 +122,19 @@ func trashPathWithProgress(root string, counter *int64) (int64, error) {
 // moveToTrash uses macOS Finder to move a file/directory to Trash.
 // This is the safest method as it uses the system's native trash mechanism.
 func moveToTrash(path string) error {
+	// Validate raw input before Abs resolves ".." components away.
+	if err := validatePath(path); err != nil {
+		return err
+	}
+
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return fmt.Errorf("failed to resolve path: %w", err)
+	}
+
+	// Validate resolved path as well (defense-in-depth).
+	if err := validatePath(absPath); err != nil {
+		return err
 	}
 
 	// Escape path for AppleScript (handle quotes and backslashes).
@@ -202,5 +156,23 @@ func moveToTrash(path string) error {
 	}
 
 	return nil
->>>>>>> a5c7abd2276eb9bd376e877b2068a3e4064cdc9b
+}
+
+// validatePath checks path safety for external commands.
+// Returns error if path is empty, relative, contains null bytes, or has traversal.
+func validatePath(path string) error {
+	if path == "" {
+		return fmt.Errorf("path is empty")
+	}
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("path must be absolute: %s", path)
+	}
+	if strings.Contains(path, "\x00") {
+		return fmt.Errorf("path contains null bytes")
+	}
+	// Check for path traversal attempts (.. components).
+	if slices.Contains(strings.Split(path, string(filepath.Separator)), "..") {
+		return fmt.Errorf("path contains traversal components: %s", path)
+	}
+	return nil
 }

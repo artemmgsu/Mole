@@ -78,10 +78,32 @@ ask_for_updates
 EOF
 
     [ "$status" -eq 1 ]  # ESC cancels
-    [[ "$output" == *"Homebrew, 3 formula, 2 cask"* ]]
-    [[ "$output" == *"App Store, 1 apps"* ]]
-    [[ "$output" == *"macOS system"* ]]
-    [[ "$output" == *"Mole"* ]]
+    [[ "$output" == *"Update Mole now?"* ]]
+    [[ "$output" == *"Run "* ]]
+    [[ "$output" == *"brew upgrade"* ]]
+    [[ "$output" == *"Software Update"* ]]
+    [[ "$output" == *"App Store"* ]]
+    [[ "$output" != *"AVAILABLE UPDATES"* ]]
+}
+
+@test "ask_for_updates with only macOS update shows settings hint without brew hint" {
+    run bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/manage/update.sh"
+BREW_OUTDATED_COUNT=0
+BREW_FORMULA_OUTDATED_COUNT=0
+BREW_CASK_OUTDATED_COUNT=0
+APPSTORE_UPDATE_COUNT=0
+MACOS_UPDATE_AVAILABLE=true
+MOLE_UPDATE_AVAILABLE=false
+ask_for_updates
+EOF
+
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Software Update"* ]]
+    [[ "$output" != *"brew upgrade"* ]]
+    [[ "$output" != *"AVAILABLE UPDATES"* ]]
 }
 
 @test "ask_for_updates accepts Enter when updates exist" {
@@ -97,8 +119,48 @@ ask_for_updates
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"AVAILABLE UPDATES"* ]]
+    [[ "$output" == *"Update Mole now?"* ]]
     [[ "$output" == *"yes"* ]]
+}
+
+@test "ask_for_updates auto-detects brew updates when counts are unset" {
+    run bash --noprofile --norc <<'EOF'
+set -euo pipefail
+
+cat > "$MOCK_BIN_DIR/brew" <<'SCRIPT'
+#!/usr/bin/env bash
+if [[ "$1" == "outdated" && "$2" == "--formula" && "$3" == "--quiet" ]]; then
+    printf "wget\njq\n"
+    exit 0
+fi
+if [[ "$1" == "outdated" && "$2" == "--cask" && "$3" == "--quiet" ]]; then
+    printf "iterm2\n"
+    exit 0
+fi
+exit 0
+SCRIPT
+chmod +x "$MOCK_BIN_DIR/brew"
+
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/manage/update.sh"
+unset BREW_OUTDATED_COUNT BREW_FORMULA_OUTDATED_COUNT BREW_CASK_OUTDATED_COUNT
+APPSTORE_UPDATE_COUNT=0
+MACOS_UPDATE_AVAILABLE=false
+MOLE_UPDATE_AVAILABLE=false
+
+set +e
+ask_for_updates
+ask_status=$?
+set -e
+
+echo "COUNTS:${BREW_OUTDATED_COUNT}:${BREW_FORMULA_OUTDATED_COUNT}:${BREW_CASK_OUTDATED_COUNT}"
+exit "$ask_status"
+EOF
+
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"brew upgrade"* ]]
+    [[ "$output" == *"COUNTS:3:2:1"* ]]
+    [[ "$output" != *"AVAILABLE UPDATES"* ]]
 }
 
 @test "format_brew_update_label lists formula and cask counts" {
@@ -452,4 +514,134 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" != *"Already on latest version"* ]]
     [[ "$output" == *"Downloading"* ]] || [[ "$output" == *"Installing"* ]] || [[ "$output" == *"Updated"* ]]
+}
+
+@test "update_mole with --nightly uses installer path and passes MOLE_VERSION=main" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" CURRENT_VERSION="$CURRENT_VERSION" PATH="$HOME/fake-bin:/usr/bin:/bin" TERM="dumb" bash --noprofile --norc << 'EOF'
+set -euo pipefail
+curl() {
+  local out=""
+  local url=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -o)
+        out="$2"
+        shift 2
+        ;;
+      http*://*)
+        url="$1"
+        shift
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -n "$out" ]]; then
+    cat > "$out" << 'INSTALLER'
+#!/usr/bin/env bash
+echo "INSTALLER_MOLE_VERSION=${MOLE_VERSION:-}"
+echo "Mole installed successfully, version ${MOLE_VERSION:-unknown}"
+INSTALLER
+    return 0
+  fi
+
+  echo "UNEXPECTED_CURL_URL:$url" >&2
+  return 1
+}
+export -f curl
+
+brew() { return 1; }
+export -f brew
+
+"$PROJECT_ROOT/mole" update --nightly
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Downloading nightly installer"* ]]
+    [[ "$output" == *"Installing nightly update"* ]]
+    [[ "$output" == *"INSTALLER_MOLE_VERSION=main"* ]]
+    [[ "$output" == *"Updated to nightly build (main), main"* ]]
+}
+
+@test "update_mole with --nightly is rejected for Homebrew installs" {
+    local fake_brew_root="$HOME/fake-homebrew"
+    local fake_cellar_bin="$fake_brew_root/Cellar/mole/9.9.9/bin"
+    local fake_path_bin="$HOME/fake-brew-bin"
+    mkdir -p "$fake_cellar_bin" "$fake_path_bin"
+    touch "$fake_cellar_bin/mole"
+    ln -sf "$fake_cellar_bin/mole" "$fake_path_bin/mole"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PATH="$fake_path_bin:/usr/bin:/bin" TERM="dumb" bash --noprofile --norc << 'EOF'
+set -euo pipefail
+brew() {
+  if [[ "${1:-}" == "list" && "${2:-}" == "--formula" ]]; then
+    echo "mole"
+    return 0
+  fi
+  if [[ "${1:-}" == "--prefix" ]]; then
+    echo "/opt/homebrew"
+    return 0
+  fi
+  return 0
+}
+export -f brew
+
+"$PROJECT_ROOT/mole" update --nightly
+EOF
+
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Nightly update is only available for script installations"* ]]
+    [[ "$output" == *"Homebrew installs follow stable releases."* ]]
+    [[ "$output" == *"mo update --nightly"* ]]
+}
+
+@test "get_homebrew_latest_version prefers brew outdated verbose target version" {
+    run bash --noprofile --norc <<'EOF'
+set -euo pipefail
+MOLE_TEST_MODE=1 MOLE_SKIP_MAIN=1 source "$PROJECT_ROOT/mole"
+
+brew() {
+  if [[ "${1:-}" == "outdated" ]]; then
+    echo "tw93/tap/mole (1.29.0) < 1.31.0"
+    return 0
+  fi
+  if [[ "${1:-}" == "info" ]]; then
+    echo "==> tw93/tap/mole: stable 9.9.9 (bottled)"
+    return 0
+  fi
+  return 0
+}
+export -f brew
+
+get_homebrew_latest_version
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == "1.31.0" ]]
+}
+
+@test "get_homebrew_latest_version parses brew info fallback with heading prefix" {
+    run bash --noprofile --norc <<'EOF'
+set -euo pipefail
+MOLE_TEST_MODE=1 MOLE_SKIP_MAIN=1 source "$PROJECT_ROOT/mole"
+
+brew() {
+  if [[ "${1:-}" == "outdated" ]]; then
+    return 0
+  fi
+  if [[ "${1:-}" == "info" ]]; then
+    echo "==> tw93/tap/mole: stable 1.31.1 (bottled), HEAD"
+    return 0
+  fi
+  return 0
+}
+export -f brew
+
+get_homebrew_latest_version
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == "1.31.1" ]]
 }

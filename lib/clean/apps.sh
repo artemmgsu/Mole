@@ -1,6 +1,9 @@
 #!/bin/bash
 # Application Data Cleanup Module
 set -euo pipefail
+
+readonly ORPHAN_AGE_THRESHOLD=${ORPHAN_AGE_THRESHOLD:-${MOLE_ORPHAN_AGE_DAYS:-30}}
+readonly CLAUDE_VM_ORPHAN_AGE_THRESHOLD=${MOLE_CLAUDE_VM_ORPHAN_AGE_DAYS:-7}
 # Args: $1=target_dir, $2=label
 clean_ds_store_tree() {
     local target="$1"
@@ -31,9 +34,9 @@ clean_ds_store_tree() {
         local size
         size=$(get_file_size "$ds_file")
         total_bytes=$((total_bytes + size))
-        ((file_count++))
+        file_count=$((file_count + 1))
         if [[ "$DRY_RUN" != "true" ]]; then
-            rm -f "$ds_file" 2> /dev/null || true
+            safe_remove "$ds_file" true 2> /dev/null || true
         fi
         if [[ $file_count -ge $MOLE_MAX_DS_STORE_FILES ]]; then
             break
@@ -45,19 +48,21 @@ clean_ds_store_tree() {
     if [[ $file_count -gt 0 ]]; then
         local size_human
         size_human=$(bytes_to_human "$total_bytes")
+        local size_kb=$(((total_bytes + 1023) / 1024))
         if [[ "$DRY_RUN" == "true" ]]; then
             echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} $label${NC}, ${YELLOW}$file_count files, $size_human dry${NC}"
         else
-            echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $label${NC}, ${GREEN}$file_count files, $size_human${NC}"
+            local line_color
+            line_color=$(cleanup_result_color_kb "$size_kb")
+            echo -e "  ${line_color}${ICON_SUCCESS}${NC} $label${NC}, ${line_color}$file_count files, $size_human${NC}"
         fi
-        local size_kb=$(((total_bytes + 1023) / 1024))
-        ((files_cleaned += file_count))
-        ((total_size_cleaned += size_kb))
-        ((total_items++))
+        files_cleaned=$((files_cleaned + file_count))
+        total_size_cleaned=$((total_size_cleaned + size_kb))
+        total_items=$((total_items + 1))
         note_activity
     fi
 }
-# Orphaned app data (60+ days inactive). Env: ORPHAN_AGE_THRESHOLD, DRY_RUN
+# Orphaned app data (30+ days inactive). Env: ORPHAN_AGE_THRESHOLD, DRY_RUN
 # Usage: scan_installed_apps "output_file"
 scan_installed_apps() {
     local installed_bundles="$1"
@@ -109,19 +114,22 @@ scan_installed_apps() {
                 local plist_path="$app_path/Contents/Info.plist"
                 [[ ! -f "$plist_path" ]] && continue
                 local bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist_path" 2> /dev/null || echo "")
-                if [[ -n "$bundle_id" ]]; then
+                if [[ -n "$bundle_id" && "$bundle_id" != "missing value" ]]; then
                     echo "$bundle_id"
-                    ((count++))
+                    count=$((count + 1))
                 fi
             done
         ) > "$scan_tmp_dir/apps_${dir_idx}.txt" &
         pids+=($!)
-        ((dir_idx++))
+        dir_idx=$((dir_idx + 1))
     done
     # Collect running apps and LaunchAgents to avoid false orphan cleanup.
     (
-        local running_apps=$(run_with_timeout 5 osascript -e 'tell application "System Events" to get bundle identifier of every application process' 2> /dev/null || echo "")
-        echo "$running_apps" | tr ',' '\n' | sed -e 's/^ *//;s/ *$//' -e '/^$/d' > "$scan_tmp_dir/running.txt"
+        # Skip AppleScript during tests to avoid permission dialogs
+        if [[ "${MOLE_TEST_MODE:-0}" != "1" && "${MOLE_TEST_NO_AUTH:-0}" != "1" ]]; then
+            local running_apps=$(run_with_timeout 5 osascript -e 'tell application "System Events" to get bundle identifier of every application process' 2> /dev/null || echo "")
+            echo "$running_apps" | tr ',' '\n' | sed -e 's/^ *//;s/ *$//' -e '/^$/d' -e '/^missing value$/d' > "$scan_tmp_dir/running.txt"
+        fi
         # Fallback: lsappinfo is more reliable than osascript
         if command -v lsappinfo > /dev/null 2>&1; then
             run_with_timeout 3 lsappinfo list 2> /dev/null | grep -o '"CFBundleIdentifier"="[^"]*"' | cut -d'"' -f4 >> "$scan_tmp_dir/running.txt" 2> /dev/null || true
@@ -199,13 +207,13 @@ is_bundle_orphaned() {
             ;;
     esac
 
-    # 5. Fast path: 60-day modification check (stat call, fast)
+    # 5. Fast path: 30-day modification check (stat call, fast)
     if [[ -e "$directory_path" ]]; then
         local last_modified_epoch=$(get_file_mtime "$directory_path")
         local current_epoch
         current_epoch=$(get_epoch_seconds)
         local days_since_modified=$(((current_epoch - last_modified_epoch) / 86400))
-        if [[ $days_since_modified -lt ${ORPHAN_AGE_THRESHOLD:-60} ]]; then
+        if [[ $days_since_modified -lt ${ORPHAN_AGE_THRESHOLD:-30} ]]; then
             return 1
         fi
     fi
@@ -215,7 +223,8 @@ is_bundle_orphaned() {
     if [[ -n "$bundle_id" ]] && [[ "$bundle_id" =~ ^[a-zA-Z0-9._-]+$ ]] && [[ ${#bundle_id} -ge 5 ]]; then
         # Initialize cache file if needed
         if [[ -z "$ORPHAN_MDFIND_CACHE_FILE" ]]; then
-            ORPHAN_MDFIND_CACHE_FILE=$(mktemp "${TMPDIR:-/tmp}/mole_mdfind_cache.XXXXXX")
+            ensure_mole_temp_root
+            ORPHAN_MDFIND_CACHE_FILE=$(mktemp "$MOLE_RESOLVED_TMPDIR/mole_mdfind_cache.XXXXXX")
             register_temp_file "$ORPHAN_MDFIND_CACHE_FILE"
         fi
 
@@ -229,7 +238,7 @@ is_bundle_orphaned() {
         else
             # Query mdfind with strict timeout (2 seconds max)
             local app_exists
-            app_exists=$(run_with_timeout 2 mdfind "kMDItemCFBundleIdentifier == '$bundle_id'" 2> /dev/null | head -1 || echo "")
+            app_exists=$(run_with_timeout 5 mdfind "kMDItemCFBundleIdentifier == '$bundle_id'" 2> /dev/null | head -1 || echo "")
             if [[ -n "$app_exists" ]]; then
                 echo "FOUND:$bundle_id" >> "$ORPHAN_MDFIND_CACHE_FILE"
                 return 1
@@ -242,6 +251,56 @@ is_bundle_orphaned() {
     # All checks passed - this is an orphan
     return 0
 }
+
+is_claude_vm_bundle_orphaned() {
+    local vm_bundle_path="$1"
+    local installed_bundles="$2"
+    local claude_bundle_id="com.anthropic.claudefordesktop"
+
+    [[ -d "$vm_bundle_path" ]] || return 1
+
+    # Extra guard in case the running-app scan missed Claude Desktop.
+    if pgrep -x "Claude" > /dev/null 2>&1; then
+        return 1
+    fi
+
+    if grep -Fxq "$claude_bundle_id" "$installed_bundles" 2> /dev/null; then
+        return 1
+    fi
+
+    if [[ -e "$vm_bundle_path" ]]; then
+        local last_modified_epoch
+        last_modified_epoch=$(get_file_mtime "$vm_bundle_path")
+        local current_epoch
+        current_epoch=$(get_epoch_seconds)
+        local days_since_modified=$(((current_epoch - last_modified_epoch) / 86400))
+        if [[ $days_since_modified -lt ${CLAUDE_VM_ORPHAN_AGE_THRESHOLD:-7} ]]; then
+            return 1
+        fi
+    fi
+
+    if [[ -z "$ORPHAN_MDFIND_CACHE_FILE" ]]; then
+        ensure_mole_temp_root
+        ORPHAN_MDFIND_CACHE_FILE=$(mktemp "$MOLE_RESOLVED_TMPDIR/mole_mdfind_cache.XXXXXX")
+        register_temp_file "$ORPHAN_MDFIND_CACHE_FILE"
+    fi
+
+    if grep -Fxq "FOUND:$claude_bundle_id" "$ORPHAN_MDFIND_CACHE_FILE" 2> /dev/null; then
+        return 1
+    fi
+    if ! grep -Fxq "NOTFOUND:$claude_bundle_id" "$ORPHAN_MDFIND_CACHE_FILE" 2> /dev/null; then
+        local app_exists
+        app_exists=$(run_with_timeout 5 mdfind "kMDItemCFBundleIdentifier == '$claude_bundle_id'" 2> /dev/null | head -1 || echo "")
+        if [[ -n "$app_exists" ]]; then
+            echo "FOUND:$claude_bundle_id" >> "$ORPHAN_MDFIND_CACHE_FILE"
+            return 1
+        fi
+        echo "NOTFOUND:$claude_bundle_id" >> "$ORPHAN_MDFIND_CACHE_FILE"
+    fi
+
+    return 0
+}
+
 # Orphaned app data sweep.
 clean_orphaned_app_data() {
     if ! ls "$HOME/Library/Caches" > /dev/null 2>&1; then
@@ -258,7 +317,32 @@ clean_orphaned_app_data() {
     local orphaned_count=0
     local total_orphaned_kb=0
     start_section_spinner "Scanning orphaned app resources..."
+
+    # Dynamically discover Claude VM bundles (path may vary across versions).
+    local claude_support_dir="$HOME/Library/Application Support/Claude"
+    if [[ -d "$claude_support_dir" ]]; then
+        while IFS= read -r -d '' claude_vm_bundle; do
+            if is_claude_vm_bundle_orphaned "$claude_vm_bundle" "$installed_bundles"; then
+                if is_path_whitelisted "$claude_vm_bundle"; then
+                    debug_log "Skipping whitelisted orphan: $claude_vm_bundle"
+                    continue
+                fi
+                local claude_vm_size_kb
+                claude_vm_size_kb=$(get_path_size_kb "$claude_vm_bundle")
+                if [[ -n "$claude_vm_size_kb" && "$claude_vm_size_kb" != "0" ]]; then
+                    if safe_clean "$claude_vm_bundle" "Orphaned Claude workspace VM"; then
+                        orphaned_count=$((orphaned_count + 1))
+                        total_orphaned_kb=$((total_orphaned_kb + claude_vm_size_kb))
+                    fi
+                fi
+            fi
+        done < <(find "$claude_support_dir" -maxdepth 3 -name "*.bundle" -type d -print0 2> /dev/null || true)
+    fi
+
     # CRITICAL: NEVER add LaunchAgents or LaunchDaemons (breaks login items/startup apps).
+    # CRITICAL: NEVER add Containers/ (managed by containermanagerd, stubs expected).
+    # CRITICAL: NEVER add Application Scripts/ (could break Shortcuts/Automator workflows).
+    # CRITICAL: NEVER add Group Containers/ (TeamID.BundleID names cause false-positive orphan checks).
     local -a resource_types=(
         "$HOME/Library/Caches|Caches|com.*:org.*:net.*:io.*"
         "$HOME/Library/Logs|Logs|com.*:org.*:net.*:io.*"
@@ -266,8 +350,9 @@ clean_orphaned_app_data() {
         "$HOME/Library/WebKit|WebKit|com.*:org.*:net.*:io.*"
         "$HOME/Library/HTTPStorages|HTTP|com.*:org.*:net.*:io.*"
         "$HOME/Library/Cookies|Cookies|*.binarycookies"
+        "$HOME/Library/Application Support|AppSupport|com.*:org.*:net.*:io.*"
+        "$HOME/Library/Preferences|Prefs|com.*:org.*:net.*:io.*"
     )
-    orphaned_count=0
     for resource_type in "${resource_types[@]}"; do
         IFS='|' read -r base_path label patterns <<< "$resource_type"
         if [[ ! -d "$base_path" ]]; then
@@ -282,35 +367,54 @@ clean_orphaned_app_data() {
             file_patterns+=("$base_path/$pat")
         done
         if [[ ${#file_patterns[@]} -gt 0 ]]; then
+            local _nullglob_state
+            _nullglob_state=$(shopt -p nullglob || true)
+            shopt -s nullglob
             for item_path in "${file_patterns[@]}"; do
                 local iteration_count=0
-                for match in $item_path; do
+                local old_ifs=$IFS
+                IFS=$'\n'
+                local -a matches=()
+                # shellcheck disable=SC2206
+                matches=($item_path)
+                IFS=$old_ifs
+                if [[ ${#matches[@]} -eq 0 ]]; then
+                    continue
+                fi
+                for match in "${matches[@]}"; do
                     [[ -e "$match" ]] || continue
-                    ((iteration_count++))
+                    iteration_count=$((iteration_count + 1))
                     if [[ $iteration_count -gt $MOLE_MAX_ORPHAN_ITERATIONS ]]; then
                         break
                     fi
                     local bundle_id=$(basename "$match")
                     bundle_id="${bundle_id%.savedState}"
                     bundle_id="${bundle_id%.binarycookies}"
+                    bundle_id="${bundle_id%.plist}"
                     if is_bundle_orphaned "$bundle_id" "$match" "$installed_bundles"; then
+                        if is_path_whitelisted "$match"; then
+                            debug_log "Skipping whitelisted orphan: $match"
+                            continue
+                        fi
                         local size_kb
                         size_kb=$(get_path_size_kb "$match")
                         if [[ -z "$size_kb" || "$size_kb" == "0" ]]; then
                             continue
                         fi
-                        safe_clean "$match" "Orphaned $label: $bundle_id"
-                        ((orphaned_count++))
-                        ((total_orphaned_kb += size_kb))
+                        if safe_clean "$match" "Orphaned $label: $bundle_id"; then
+                            orphaned_count=$((orphaned_count + 1))
+                            total_orphaned_kb=$((total_orphaned_kb + size_kb))
+                        fi
                     fi
                 done
             done
+            eval "$_nullglob_state"
         fi
     done
     stop_section_spinner
     if [[ $orphaned_count -gt 0 ]]; then
         local orphaned_mb=$(echo "$total_orphaned_kb" | awk '{printf "%.1f", $1/1024}')
-        echo "  ${GREEN}${ICON_SUCCESS}${NC} Cleaned $orphaned_count items, about ${orphaned_mb}MB"
+        echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Cleaned $orphaned_count items, about ${orphaned_mb}MB"
         note_activity
     fi
     rm -f "$installed_bundles"
@@ -368,7 +472,8 @@ clean_orphaned_system_services() {
 
         if [[ -n "$bundle_id" ]] && [[ "$bundle_id" =~ ^[a-zA-Z0-9._-]+$ ]] && [[ ${#bundle_id} -ge 5 ]]; then
             if [[ -z "$mdfind_cache_file" ]]; then
-                mdfind_cache_file=$(mktemp "${TMPDIR:-/tmp}/mole_mdfind_cache.XXXXXX")
+                ensure_mole_temp_root
+                mdfind_cache_file=$(mktemp "$MOLE_RESOLVED_TMPDIR/mole_mdfind_cache.XXXXXX")
                 register_temp_file "$mdfind_cache_file"
             fi
 
@@ -377,7 +482,7 @@ clean_orphaned_system_services() {
             fi
             if ! grep -Fxq "NOTFOUND:$bundle_id" "$mdfind_cache_file" 2> /dev/null; then
                 local app_found
-                app_found=$(run_with_timeout 2 mdfind "kMDItemCFBundleIdentifier == '$bundle_id'" 2> /dev/null | head -1 || echo "")
+                app_found=$(run_with_timeout 5 mdfind "kMDItemCFBundleIdentifier == '$bundle_id'" 2> /dev/null | head -1 || echo "")
                 if [[ -n "$app_found" ]]; then
                     echo "FOUND:$bundle_id" >> "$mdfind_cache_file"
                     return 0
@@ -414,8 +519,8 @@ clean_orphaned_system_services() {
                     orphaned_files+=("$plist")
                     local size_kb
                     size_kb=$(sudo du -skP "$plist" 2> /dev/null | awk '{print $1}' || echo "0")
-                    ((total_orphaned_kb += size_kb))
-                    ((orphaned_count++))
+                    total_orphaned_kb=$((total_orphaned_kb + size_kb))
+                    orphaned_count=$((orphaned_count + 1))
                     break
                 fi
             done
@@ -445,8 +550,8 @@ clean_orphaned_system_services() {
                     orphaned_files+=("$plist")
                     local size_kb
                     size_kb=$(sudo du -skP "$plist" 2> /dev/null | awk '{print $1}' || echo "0")
-                    ((total_orphaned_kb += size_kb))
-                    ((orphaned_count++))
+                    total_orphaned_kb=$((total_orphaned_kb + size_kb))
+                    orphaned_count=$((orphaned_count + 1))
                     break
                 fi
             done
@@ -463,6 +568,7 @@ clean_orphaned_system_services() {
             # Skip Apple system files
             [[ "$filename" == com.apple.* ]] && continue
 
+            local matched_known=false
             for pattern_entry in "${known_orphan_patterns[@]}"; do
                 local file_pattern="${pattern_entry%%:*}"
                 local app_path="${pattern_entry#*:}"
@@ -470,20 +576,52 @@ clean_orphaned_system_services() {
                 # shellcheck disable=SC2053
                 if [[ "$filename" == $file_pattern ]] && [[ ! -d "$app_path" ]]; then
                     if _system_service_app_exists "$bundle_id" "$app_path"; then
-                        continue
+                        matched_known=true
+                        break
                     fi
                     orphaned_files+=("$helper")
                     local size_kb
                     size_kb=$(sudo du -skP "$helper" 2> /dev/null | awk '{print $1}' || echo "0")
-                    ((total_orphaned_kb += size_kb))
-                    ((orphaned_count++))
+                    total_orphaned_kb=$((total_orphaned_kb + size_kb))
+                    orphaned_count=$((orphaned_count + 1))
+                    matched_known=true
                     break
                 fi
             done
+
+            # Generic detection: bundle-ID-style helpers not matched by hardcoded list.
+            # Privileged helpers are frequently registered via SMJobBless and ship
+            # *inside* the parent app bundle at Contents/Library/LaunchServices/<id>,
+            # which Spotlight does not index. Use the shared resolver so we do not
+            # falsely flag Adobe / 1Password / Docker helpers as orphaned when their
+            # parent app is installed. See #733.
+            if [[ "$matched_known" == "false" ]] && [[ "$bundle_id" =~ ^(com|org|net|io)\. ]]; then
+                if ! bundle_has_installed_app "$bundle_id"; then
+                    orphaned_files+=("$helper")
+                    local size_kb
+                    size_kb=$(sudo du -skP "$helper" 2> /dev/null | awk '{print $1}' || echo "0")
+                    total_orphaned_kb=$((total_orphaned_kb + size_kb))
+                    orphaned_count=$((orphaned_count + 1))
+                fi
+            fi
         done < <(sudo find /Library/PrivilegedHelperTools -maxdepth 1 -type f -print0 2> /dev/null)
     fi
 
     stop_section_spinner
+
+    # Drop whitelisted entries before reporting/cleaning.
+    if [[ $orphaned_count -gt 0 && ${#WHITELIST_PATTERNS[@]} -gt 0 ]]; then
+        local -a kept_files=()
+        for orphan_file in "${orphaned_files[@]}"; do
+            if is_path_whitelisted "$orphan_file"; then
+                debug_log "Skipping whitelisted orphan service: $orphan_file"
+                continue
+            fi
+            kept_files+=("$orphan_file")
+        done
+        orphaned_count=${#kept_files[@]}
+        orphaned_files=("${kept_files[@]}")
+    fi
 
     # Report and clean
     if [[ $orphaned_count -gt 0 ]]; then
@@ -493,7 +631,7 @@ clean_orphaned_system_services() {
             local filename
             filename=$(basename "$orphan_file")
 
-            if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
+            if [[ "$DRY_RUN" == "true" ]]; then
                 debug_log "[DRY RUN] Would remove orphaned service: $orphan_file"
             else
                 # Unload if it's a LaunchDaemon/LaunchAgent
@@ -512,8 +650,20 @@ clean_orphaned_system_services() {
         else
             orphaned_kb_display="${total_orphaned_kb}KB"
         fi
-        echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Cleaned $orphaned_count orphaned services, about $orphaned_kb_display"
-        note_activity
+        if [[ "${DRY_RUN:-false}" != "true" ]]; then
+            echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Cleaned $orphaned_count orphaned services, about $orphaned_kb_display"
+            note_activity
+        fi
     fi
 
+}
+
+# ============================================================================
+# User LaunchAgents
+# ============================================================================
+
+# User-level LaunchAgents are user-owned automation/configuration, not generic
+# cleanup targets. `mo clean` must not delete them automatically.
+clean_orphaned_launch_agents() {
+    return 0
 }

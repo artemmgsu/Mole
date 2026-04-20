@@ -5,7 +5,17 @@
 clean_homebrew() {
     command -v brew > /dev/null 2>&1 || return 0
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Homebrew · would cleanup and autoremove"
+        # Check if Homebrew cache is whitelisted
+        if is_path_whitelisted "$HOME/Library/Caches/Homebrew"; then
+            echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Homebrew · skipped whitelist"
+        else
+            echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} Homebrew · would cleanup and autoremove"
+        fi
+        return 0
+    fi
+    # Keep behavior consistent with dry-run preview.
+    if is_path_whitelisted "$HOME/Library/Caches/Homebrew"; then
+        echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Homebrew · skipped whitelist"
         return 0
     fi
     # Skip if cleaned recently to avoid repeated heavy operations.
@@ -51,7 +61,7 @@ clean_homebrew() {
     local autoremove_exit=0
     if [[ "$skip_cleanup" == "false" ]]; then
         brew_tmp_file=$(create_temp_file)
-        run_with_timeout "$timeout_seconds" brew cleanup > "$brew_tmp_file" 2>&1 &
+        run_with_timeout "$timeout_seconds" brew cleanup --prune=30 > "$brew_tmp_file" 2>&1 &
         brew_pid=$!
     fi
     autoremove_tmp_file=$(create_temp_file)

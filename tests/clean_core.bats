@@ -10,6 +10,10 @@ setup_file() {
     HOME="$(mktemp -d "${BATS_TEST_DIRNAME}/tmp-clean-home.XXXXXX")"
     export HOME
 
+    # Prevent AppleScript permission dialogs during tests
+    MOLE_TEST_MODE=1
+    export MOLE_TEST_MODE
+
     mkdir -p "$HOME"
 }
 
@@ -25,13 +29,86 @@ setup() {
     rm -rf "${HOME:?}"/*
     rm -rf "$HOME/Library" "$HOME/.config"
     mkdir -p "$HOME/Library/Caches" "$HOME/.config/mole"
+    unset TEST_MOCK_BIN
+}
+
+set_mock_sudo_cached() {
+    TEST_MOCK_BIN="$HOME/bin"
+    mkdir -p "$TEST_MOCK_BIN"
+    cat > "$TEST_MOCK_BIN/sudo" << 'MOCK'
+#!/bin/bash
+# Shim: sudo -n true succeeds, all other sudo calls are no-ops.
+if [[ "$1" == "-n" && "$2" == "true" ]]; then exit 0; fi
+if [[ "$1" == "test" ]]; then exit 1; fi
+if [[ "$1" == "find" ]]; then exit 0; fi
+exit 0
+MOCK
+    chmod +x "$TEST_MOCK_BIN/sudo"
+}
+
+set_mock_sudo_uncached() {
+    TEST_MOCK_BIN="$HOME/bin"
+    mkdir -p "$TEST_MOCK_BIN"
+    cat > "$TEST_MOCK_BIN/sudo" << 'MOCK'
+#!/bin/bash
+# Shim: sudo -n always fails (no cached credentials).
+exit 1
+MOCK
+    chmod +x "$TEST_MOCK_BIN/sudo"
+}
+
+run_clean_dry_run() {
+    local test_path="$PATH"
+    if [[ -n "${TEST_MOCK_BIN:-}" ]]; then
+        test_path="$TEST_MOCK_BIN:$PATH"
+    fi
+
+    run env HOME="$HOME" MOLE_TEST_MODE=1 PATH="$test_path" \
+        "$PROJECT_ROOT/mole" clean --dry-run
 }
 
 @test "mo clean --dry-run skips system cleanup in non-interactive mode" {
-    run env HOME="$HOME" MOLE_TEST_MODE=1 "$PROJECT_ROOT/mole" clean --dry-run
+    set_mock_sudo_uncached
+    run_clean_dry_run
     [ "$status" -eq 0 ]
     [[ "$output" == *"Dry Run Mode"* ]]
-    [[ "$output" != *"Deep system-level cleanup"* ]]
+    [[ "$output" == *"sudo -v && mo clean --dry-run"* ]]
+    [[ "$output" != *"system preview included"* ]]
+}
+
+@test "mo clean --dry-run includes system preview when sudo is cached" {
+    set_mock_sudo_cached
+    run_clean_dry_run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"system preview included"* ]]
+}
+
+@test "mo clean --dry-run shows hint when sudo is not cached" {
+    set_mock_sudo_uncached
+    run_clean_dry_run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"sudo -v"* ]]
+    [[ "$output" == *"full preview"* ]]
+}
+
+@test "mo clean --dry-run survives an unwritable TMPDIR" {
+    local blocked_tmp="$HOME/blocked-tmp"
+    mkdir -p "$blocked_tmp"
+    chmod 500 "$blocked_tmp"
+
+    set_mock_sudo_uncached
+    local test_path="$PATH"
+    if [[ -n "${TEST_MOCK_BIN:-}" ]]; then
+        test_path="$TEST_MOCK_BIN:$PATH"
+    fi
+
+    run env HOME="$HOME" TMPDIR="$blocked_tmp" MOLE_TEST_MODE=1 PATH="$test_path" \
+        "$PROJECT_ROOT/mole" clean --dry-run
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"mktemp:"* ]]
+    [[ "$output" != *"Failed to create temporary file"* ]]
+    [ -d "$HOME/.cache/mole/tmp" ]
 }
 
 @test "mo clean --dry-run reports user cache without deleting it" {
@@ -43,6 +120,41 @@ setup() {
     [[ "$output" == *"User app cache"* ]]
     [[ "$output" == *"Potential space"* ]]
     [ -f "$HOME/Library/Caches/TestApp/cache.tmp" ]
+}
+
+@test "mo clean --dry-run reports stale login item without deleting it" {
+    mkdir -p "$HOME/Library/LaunchAgents"
+    cat > "$HOME/Library/LaunchAgents/com.example.stale.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.example.stale</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/Missing.app/Contents/MacOS/Missing</string>
+    </array>
+</dict>
+</plist>
+PLIST
+
+    run env HOME="$HOME" MOLE_TEST_MODE=1 "$PROJECT_ROOT/mole" clean --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Potential stale login item: com.example.stale.plist"* ]]
+    [ -f "$HOME/Library/LaunchAgents/com.example.stale.plist" ]
+}
+
+@test "mo clean --dry-run does not export duplicate targets across sections" {
+    mkdir -p "$HOME/Library/Application Support/Code/CachedData"
+    echo "cache" > "$HOME/Library/Application Support/Code/CachedData/data.bin"
+
+    run env HOME="$HOME" MOLE_TEST_MODE=0 "$PROJECT_ROOT/mole" clean --dry-run
+    [ "$status" -eq 0 ]
+
+    run grep -c "Application Support/Code/CachedData" "$HOME/.config/mole/clean-list.txt"
+    [ "$status" -eq 0 ]
+    [ "$output" -eq 1 ]
 }
 
 @test "mo clean honors whitelist entries" {
@@ -107,7 +219,7 @@ EOF
     [ -f "$HOME/Documents/.DS_Store" ]
 }
 
-@test "clean_recent_items removes shared file lists" {
+@test "_clean_recent_items removes shared file lists" {
     local shared_dir="$HOME/Library/Application Support/com.apple.sharedfilelist"
     mkdir -p "$shared_dir"
     touch "$shared_dir/com.apple.LSSharedFileList.RecentApplications.sfl2"
@@ -120,14 +232,14 @@ source "$PROJECT_ROOT/lib/clean/user.sh"
 safe_clean() {
     echo "safe_clean $1"
 }
-clean_recent_items
+_clean_recent_items
 EOF
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"Recent"* ]]
 }
 
-@test "clean_recent_items handles missing shared directory" {
+@test "_clean_recent_items handles missing shared directory" {
     rm -rf "$HOME/Library/Application Support/com.apple.sharedfilelist"
 
     run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" bash --noprofile --norc << 'EOF'
@@ -137,13 +249,13 @@ source "$PROJECT_ROOT/lib/clean/user.sh"
 safe_clean() {
     echo "safe_clean $1"
 }
-clean_recent_items
+_clean_recent_items
 EOF
 
     [ "$status" -eq 0 ]
 }
 
-@test "clean_mail_downloads skips cleanup when size below threshold" {
+@test "_clean_mail_downloads skips cleanup when size below threshold" {
     mkdir -p "$HOME/Library/Mail Downloads"
     echo "test" > "$HOME/Library/Mail Downloads/small.txt"
 
@@ -151,14 +263,14 @@ EOF
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/user.sh"
-clean_mail_downloads
+_clean_mail_downloads
 EOF
 
     [ "$status" -eq 0 ]
     [ -f "$HOME/Library/Mail Downloads/small.txt" ]
 }
 
-@test "clean_mail_downloads removes old attachments" {
+@test "_clean_mail_downloads removes old attachments" {
     mkdir -p "$HOME/Library/Mail Downloads"
     touch "$HOME/Library/Mail Downloads/old.pdf"
     touch -t 202301010000 "$HOME/Library/Mail Downloads/old.pdf"
@@ -171,7 +283,7 @@ EOF
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/user.sh"
-clean_mail_downloads
+_clean_mail_downloads
 EOF
 
     [ "$status" -eq 0 ]
@@ -213,6 +325,9 @@ MOCK_TMUTIL
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/system.sh"
+
+defaults() { echo "1"; }
+
 
 clean_time_machine_failed_backups
 EOF
@@ -257,11 +372,12 @@ set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/system.sh"
 
+defaults() { echo "1"; }
+
+
 clean_time_machine_failed_backups
 EOF
 
     [ "$status" -eq 0 ]
     [[ "$output" == *"Time Machine backup in progress, skipping cleanup"* ]]
 }
-
-
